@@ -3,121 +3,160 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import datetime
-import scipy.stats as stats
 
 # --- 1. GIAO DIỆN & STYLE ---
-st.set_page_config(page_title="TUAN PHONG V16.0 MOMENTUM", layout="wide")
+st.set_page_config(page_title="TUAN PHONG V16.1 MOMENTUM", layout="wide")
 st.markdown("""<style>
     .main-box { background-color: #ffffff; color: #1e293b; padding: 12px; border-radius: 10px; font-family: 'JetBrains Mono'; font-size: 0.82rem; border: 2px solid #3b82f6; font-weight: 700; text-align: center; }
     .stTable td { font-weight: bold !important; text-align: center !important; font-size: 11px !important; }
 </style>""", unsafe_allow_html=True)
 
-# --- 2. ĐỊNH NGHĨA 8 BIẾN 50/50 ---
+# --- 2. QUY LUẬT & 8 BIẾN 50/50 ---
 SO_THUONG = [2,3,4,6,8,13,15,17,18,19,20,24,25,26,28,30,31,35,37,39,40,42,46,47,48,51,52,53,57,59,60,62,64,68,69,71,73,74,75,79,80,81,82,84,86,91,93,95,96,97]
+B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
+B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
 
-def get_5050_attributes(n):
-    d, u, t, h = n // 10, n % 10, (n // 10 + n % 10) % 10, (n // 10 - n % 10 + 10) % 10
+def get_5050_attrs(n):
+    d, u = n // 10, n % 10
+    t, h = (d + u) % 10, (d - u + 10) % 10
     return {
-        "D_CL": "Chẵn" if d % 2 == 0 else "Lẻ",
-        "U_CL": "Chẵn" if u % 2 == 0 else "Lẻ",
-        "T_CL": "Chẵn" if t % 2 == 0 else "Lẻ",
-        "D_TB": "To" if d >= 5 else "Bé",
-        "U_TB": "To" if u >= 5 else "Bé",
-        "T_TB": "To" if t >= 5 else "Bé",
-        "HE": "Thường" if n in SO_THUONG else "HệKép",
-        "H_TB": "To" if h >= 5 else "Bé"
+        "D_CL": "Chẵn" if d % 2 == 0 else "Lẻ", "U_CL": "Chẵn" if u % 2 == 0 else "Lẻ",
+        "T_CL": "Chẵn" if t % 2 == 0 else "Lẻ", "D_TB": "To" if d >= 5 else "Bé",
+        "U_TB": "To" if u >= 5 else "Bé", "T_TB": "To" if t >= 5 else "Bé",
+        "HE": "Thường" if n in SO_THUONG else "HệKép", "H_TB": "To" if h >= 5 else "Bé"
     }
 
-# --- 3. CƠ CHẾ AI PHÂN TÍCH NHỊP (TREND FOLLOWING) ---
+def build_mt_120(g):
+    if len(str(g)) < 5: return [0]*120
+    dts = [int(x) for x in str(g)[-5:]]
+    tien = [[(d + s) % 10 for d in dts] for s in range(10)]
+    bong = [dts]; c = dts
+    for i in range(13):
+        c = [B_D[x] for x in c] if i%2==0 else [B_A[x] for x in c]
+        bong.append(c)
+    return ([x for sub in tien for x in sub] + [x for sub in bong for x in sub])[:120]
+
+def create_blank():
+    return {
+        "dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[],
+        "bang_b":[{"dau":1,"duoi":1} for _ in range(120)],
+        "ref":{"dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}}
+    }
+
+if 'multi_db' not in st.session_state: st.session_state.multi_db = {"MB": create_blank()}
+
+# --- 3. BỘ CẢM BIẾN NHỊP (BẮT BỆT/NHẢY) ---
 def analyze_rhythm(history):
     if len(history) < 3: return {}
-    
-    # Lấy dữ liệu 10 kỳ gần nhất
     recent_nums = [int(h["Số"]) for h in history[:10]]
-    attr_history = [get_5050_attributes(n) for n in recent_nums]
-    
+    attrs = [get_5050_attrs(n) for n in recent_nums]
     bias = {}
-    keys = ["D_CL", "U_CL", "T_CL", "D_TB", "U_TB", "T_TB", "HE", "H_TB"]
-    
-    for k in keys:
-        seq = [h[k] for h in attr_history]
-        last_val = seq[0]
-        
-        # Kiểm tra bệt (Cùng loại liên tiếp)
+    for k in ["D_CL","U_CL","T_CL","D_TB","U_TB","T_TB","HE","H_TB"]:
+        seq = [a[k] for a in attrs]
+        last_v = seq[0]
         streak = 0
         for v in seq:
-            if v == last_val: streak += 1
+            if v == last_v: streak += 1
             else: break
-        
-        # Kiểm tra Zigzag (A-B-A-B)
-        is_zigzag = False
+        # Ưu tiên bệt theo ý mày (Dưới 5 kỳ tiếp tục bám)
+        if streak < 5: bias[k] = last_v
+        # Nếu đang nhảy Zic-zac 1-1-1 thì ưu tiên thằng đối diện
         if len(seq) >= 3 and seq[0] != seq[1] and seq[1] == seq[2]:
-            is_zigzag = True
-
-        # QUYẾT ĐỊNH CỦA AI:
-        if is_zigzag:
-            # Nếu đang nhảy A-B-A, ưu tiên kỳ sau là B
-            bias[k] = {"target": seq[1], "score": 15}
-        elif streak < 5:
-            # Theo ý mày: Dưới 5 kỳ thì ưu tiên bệt tiếp
-            bias[k] = {"target": last_val, "score": 20}
-        else:
-            # Chạm ngưỡng 5 kỳ: Giảm ưu tiên hoặc chuẩn bị văng
-            bias[k] = {"target": last_val, "score": 5}
-            
+            bias[k] = seq[1]
     return bias
 
-# --- 4. ENGINE TÍNH TOÁN V16.0 ---
-def calculate_master_v160(st_name):
+# --- 4. ENGINE TÍNH TOÁN ---
+def get_rank(arr, rev=False):
+    vals = np.array(arr)
+    if rev: vals = -vals
+    temp = vals.argsort()
+    ranks = np.empty_like(temp)
+    ranks[temp] = np.arange(len(vals)) + 1
+    return ranks
+
+def calculate_master(st_name):
     db = st.session_state.multi_db[st_name]
-    last_gdb = db["last_gdb_full"]
+    last_g = db["last_gdb_full"]
+    curr_n = int(last_g[-2:]) if len(last_g)>=2 else 0
+    bias = analyze_rhythm(db["history"])
     
-    # Lấy Bias từ nhịp điệu (Engine 5)
-    rhythm_bias = analyze_rhythm(db["history"])
-    
-    e1, e2, e3, e4 = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
-    e5_bias = np.zeros(100) # Điểm thưởng Momentum
-    
-    # Logic Rank gốc (Rút gọn cho mượt)
+    e1, e2, e3, e4, e5 = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
+    mt = build_mt_120(last_g)
+    val_e3 = [sum(db["bang_b"][idx]["dau"] for idx, v in enumerate(mt) if v == n) for n in range(10)]
+    dk, uk = str(curr_n//10), str(curr_n%10)
+
     for i in range(100):
-        d, u, t = i // 10, i % 10, (i // 10 + i % 10) % 10
-        attrs = get_5050_attributes(i)
-        
-        # Rank Gốc (E1, E2, E3, E4 giữ nguyên logic bản 15)
+        d, u, t = i//10, i%10, (i//10+i%10)%10
         e1[i] = db["dau"][d] + db["duoi"][u] + db["tong"][t]
-        e2[i] = (sum(int(x) for x in last_gdb if x.isdigit()) % 10) + (i % 10)
-        # E3 & E4 logic (mô phỏng nhanh)
-        e3[i] = 50 
-        e4[i] = 50
+        e2[i] = (sum(int(x) for x in last_g if x.isdigit()) % 10) + (i % 10)
+        e3[i] = val_e3[d] + val_e3[u]
+        if dk in db["ref"]["dau"]: e4[i] += db["ref"]["dau"][dk]["d"][d] + db["ref"]["dau"][dk]["u"][u]
+        
+        # ENGINE 5: BƠM ĐIỂM CHO 8 BIẾN 50/50 (ƯU TIÊN BỆT)
+        at = get_5050_attrs(i)
+        for k, v in bias.items():
+            if at[k] == v: e5[i] += 15 # Bơm 15 điểm cho mỗi thuộc tính khớp nhịp
 
-        # ENGINE 5: CỘNG ĐIỂM ƯU TIÊN THEO NHỊP BỆT/NHẢY
-        for k, v in rhythm_bias.items():
-            if attrs[k] == v["target"]:
-                e5_bias[i] += v["score"]
+    r1, r2, r3, r4 = get_rank(e1), get_rank(e2), get_rank(e3, True), get_rank(e4, True)
+    # Rank cuối = Trung bình 4 Rank gốc - Điểm thưởng nhịp bệt
+    final = (r1 + r2 + r3 + r4) / 4 - (e5 / 5)
+    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":final, "R1":r1, "R4":r4})
 
-    def rk(s, rev=False): return stats.rankdata(-s if rev else s, method='min')
-    r1, r2, r3, r4 = rk(e1), rk(e2), rk(e3, True), rk(e4, True)
-    
-    # Kết hợp: Lấy Rank gốc làm nền, trừ đi điểm thưởng Engine 5
-    # (Trừ vì Rank càng nhỏ càng tốt, điểm thưởng càng cao thì Rank càng giảm)
-    w = [25, 25, 25, 25]
-    base_rank = (r1*w[0] + r2*w[1] + r3*w[2] + r4*w[3]) / 100
-    final_score = base_rank - (e5_bias / 10) # Ép nhịp 50/50 vào Rank gốc
-    
-    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":final_score, "R1":r1, "R4":r4})
-
-# --- GIAO DIỆN ---
-st.title("🛡️ COMMANDER V16.0 MOMENTUM")
-# ... (Phần Sidebar và Cập nhật giữ nguyên cấu trúc bản 15) ...
-
-# (Ví dụ phần hiển thị mới ở Tab Phân Tích)
-def show_momentum_analysis(st_name):
+def process_v161():
+    st_name = st.session_state.current_station
     db = st.session_state.multi_db[st_name]
+    raw = st.session_state.gdb_in.strip()
+    if len(raw)<5: return
+    n = int(raw[-2:]); target = f"{n:02d}"
+    df_old = calculate_master(st_name)
+    db["history"].insert(0, {
+        "Kỳ": int(db["ky_quay"]), "GĐB": raw, "Số": target,
+        "Rank_AI": int(get_rank(df_old["TOTAL"])[df_old[df_old['SO']==target].index[0]]),
+        "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]),
+        "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])
+    })
+    dv, duv, tv = n//10, n%10, (n//10+n%10)%10
+    for i in range(10):
+        db["dau"][i] = 0 if i==dv else db["dau"][i]+1
+        db["duoi"][i] = 0 if i==duv else db["duoi"][i]+1
+        db["tong"][i] = 0 if i==tv else db["tong"][i]+1
+    mt_prev = build_mt_120(db["last_gdb_full"])
+    for idx, v in enumerate(mt_prev):
+        db["bang_b"][idx]["dau"] = 0 if v==dv else db["bang_b"][idx]["dau"]+1
+    if len(db["history"]) >= 2:
+        c_n = int(db["history"][1]["Số"]); n_n = int(db["history"][0]["Số"])
+        db["ref"]["dau"][str(c_n//10)]["d"][n_n//10]+=1
+    db["last_gdb_full"], db["ky_quay"] = raw, db["ky_quay"]+1
+
+# --- 5. GIAO DIỆN ---
+st.title("🛡️ COMMANDER V16.1 MOMENTUM")
+with st.sidebar:
+    st.session_state.current_station = st.selectbox("ĐÀI SOI:", list(st.session_state.multi_db.keys()))
+    if st.button("🔴 RESET"): st.session_state.clear(); st.rerun()
+    up = st.file_uploader("📂 Nạp .Json", type="json")
+    if up and st.button("✅ XÁC NHẬN"): st.session_state.multi_db = json.load(up); st.rerun()
+
+db = st.session_state.multi_db[st.session_state.current_station]
+c1, c2 = st.columns([3,1])
+with c1: st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"], key="gdb_in")
+with c2: db["ky_quay"] = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
+st.button("🚀 CẬP NHẬT HỆ THỐNG", on_click=process_v161, type="primary", use_container_width=True)
+
+df_m = calculate_master(st.session_state.current_station)
+t1, t2, t3 = st.tabs(["🎯 DÀN AI", "📡 NHỊP 50/50", "📋 NHẬT KÝ"])
+
+with t1:
+    danh_sach = df_m.sort_values("TOTAL")["SO"].tolist()
+    st.markdown(f"**DÀN 36 SỐ:**<br><div class='main-box'>{' '.join(danh_sach[:36])}</div>", unsafe_allow_html=True)
+    st.markdown(f"**DÀN 51 SỐ:**<br><div class='main-box' style='border-color:#10b981'>{' '.join(danh_sach[:51])}</div>", unsafe_allow_html=True)
+with t2:
+    st.subheader("📡 Cảm biến nhịp bệt (Bơm điểm ưu tiên)")
     bias = analyze_rhythm(db["history"])
     if bias:
-        st.subheader("📡 Cảm biến nhịp điệu (8 biến 50/50)")
         cols = st.columns(4)
         for i, (k, v) in enumerate(bias.items()):
-            cols[i % 4].metric(k, v["target"], f"+{v['score']} pts")
-
-# --- (Mày dán tiếp các phần xử lý dữ liệu của bản 15 vào là chạy mượt) ---
+            cols[i%4].metric(k, v, "BÁM BỆT" if "To" in v or "Bé" in v or "Chẵn" in v or "Lẻ" in v else "BÁM NHỊP")
+    else: st.info("Cần ít nhất 3 kỳ lịch sử để nhận diện nhịp.")
+    st.download_button("💾 LƯU DỮ LIỆU", json.dumps(st.session_state.multi_db), "DATA_V16.json", use_container_width=True)
+with t3:
+    if db["history"]: st.table(pd.DataFrame(db["history"])[['Kỳ', 'GĐB', 'Số', 'Rank_AI', 'Rank_E1', 'Rank_E4']])
