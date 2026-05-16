@@ -6,7 +6,7 @@ from datetime import datetime
 import random
 
 # --- 1. GIAO DIỆN SÁNG CHUẨN MOBILE - CHỮ SIÊU NHỎ ---
-st.set_page_config(page_title="TUAN PHONG V12.3 MULTI", layout="wide")
+st.set_page_config(page_title="TUAN PHONG V12.5 MULTI", layout="wide")
 st.markdown("""
     <style>
     .main-box { 
@@ -23,15 +23,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MA TRẬN QUY LUẬT TOÁN HỌC TỪ CÁC APP CŨ ---
+# --- 2. MA TRẬN QUY LUẬT TOÁN HỌC ---
 BO_MAP = {"00":[0,5,50,55],"01":[1,10,6,60,51,15,56,65],"02":[2,20,7,70,52,25,57,75],"03":[3,30,8,80,53,35,58,85],"04":[4,40,9,90,54,45,59,95],"11":[11,16,61,66],"12":[12,21,17,71,62,26,67,76],"13":[13,31,18,81,63,36,68,86],"14":[14,41,19,91,64,46,69,96],"22":[22,27,72,77],"23":[23,32,28,82,73,37,78,87],"24":[24,42,29,92,74,47,79,97],"33":[33,38,83,88],"34":[34,43,39,93,84,48,89,98],"44":[44,49,94,99]}
 CL_4 = {"CC":[0,22,44,66,88,2,20,4,40,6,60,8,80,24,42,26,62,28,82,46,64,48,84,68,86], "CL":[1,3,5,7,9,21,23,25,27,29,41,43,45,47,49,61,63,65,67,69,81,83,85,87,89], "LL":[11,33,55,77,99,13,31,15,51,17,71,19,91,35,53,37,73,39,93,57,75,59,95,79,97], "LC":[10,12,14,16,18,30,32,34,36,38,50,52,54,56,58,70,72,74,76,78,90,92,94,96,98]}
 BT_4 = {"BB":[0,11,22,33,44,1,10,2,20,3,30,4,40,12,21,13,31,14,41,23,32,24,42,34,43], "BT":[5,6,7,8,9,15,16,17,18,19,25,26,27,28,29,35,36,37,38,39,45,46,47,48,49], "TB":[90,91,92,93,94,80,81,82,83,84,70,71,72,73,74,60,61,62,63,64,50,51,52,53,54], "TT":[55,66,77,88,99,56,65,57,75,58,85,59,95,67,76,68,86,69,96,78,87,79,97,89,98]}
 GIAP_12 = {"TI":[0,12,24,36,48,60,72,84,96],"SUU":[1,13,25,37,49,61,73,85,97],"DAN":[2,14,26,38,50,62,74,86,98],"MAO":[3,15,27,39,51,63,75,87,99],"THIN":[4,16,28,40,52,64,76,88],"TY":[5,17,29,41,53,65,77,89],"NGO":[6,18,30,42,54,66,78,90],"MUI":[7,19,31,43,55,67,79,91],"THAN":[8,20,32,44,56,68,80,92],"DAU":[9,21,33,45,57,69,81,93],"TUAT":[10,22,34,46,58,70,82,94],"HOI":[11,23,35,47,59,71,83,95]}
 DANG_5 = {"KEP":[0,55,11,66,22,77,33,88,44,99,5,50,16,61,27,72,38,83,49,94], "SAT KEP":[1,10,12,21,23,32,34,43,45,54,56,65,67,76,78,87,89,98,9,90], "CACH 1":[2,20,8,80,13,31,19,91,24,42,35,53,46,64,57,75,79,97,68,86], "CACH 2":[3,30,18,81,25,52,47,74,69,96,7,70,14,41,29,92,36,63,58,85], "CACH 3":[4,40,6,60,15,51,17,71,28,82,26,62,37,73,39,93,48,84,59,95]}
 SO_THUONG = [2,3,4,6,8,13,15,17,18,19,20,24,25,26,28,30,31,35,37,39,40,42,46,47,48,51,52,53,57,59,60,62,64,68,69,71,73,74,75,79,80,81,82,84,86,91,93,95,96,97]
-BONG_DUONG = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
-BONG_AM = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
+BONG_DUONG = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}; BONG_AM = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
 
 ROOT_DATA = {
     1:{"cham":[1,6,0,5,2,7,3,8,4,9],"dau":[1,6,0,5,4,9,2,7,3,8],"duoi":[1,6,2,7,0,5,4,9,3,8],"tong":[1,6,2,7,4,9,0,5,3,8],"hieu":[0,5,1,6,2,7,4,9,3,8]},
@@ -50,7 +49,6 @@ def get_bo_idx(n):
         if n in v: return i
     return 0
 
-# FIX LỖI NAMEERROR: Hàm tìm vị trí đồng bộ hóa đa năng cho mọi kiểu map dữ liệu
 def find_idx_universal(n, mapping):
     for i, nums in enumerate(mapping.values()):
         if n in nums: return i
@@ -73,7 +71,6 @@ def build_bang_a_tien_tien(gdb_str):
         bong.append(current)
     return [item for sub in tien for item in sub] + [item for sub in bong for item in sub]
 
-# --- HÀM TẠO KHUÔN BỘ NHỚ TRỐNG CHO MỘT ĐÀI MỚI ---
 def create_blank_station():
     return {
         "dau": [0]*10, "duoi": [0]*10, "tong": [0]*10, "hieu": [0]*10, "cham": [0]*10,
@@ -85,7 +82,6 @@ def create_blank_station():
         "weights": [25.0, 25.0, 25.0, 25.0], "reflex_memory": {}
     }
 
-# --- KHỞI TẠO STATE HỆ THỐNG ĐA ĐÀI LẬP TỨC ---
 if 'multi_db' not in st.session_state:
     st.session_state.multi_db = {
         "MB": create_blank_station(),
@@ -95,8 +91,7 @@ if 'multi_db' not in st.session_state:
 if 'current_station' not in st.session_state:
     st.session_state.current_station = "MB"
 
-# --- THUẬT TOÁN LẬP BẢN ĐỒ PHẢN XẠ SỐ RIÊNG BIỆT CHO TỪNG ĐÀI ---
-def rebuild_reflex_memory_v123(st_name):
+def rebuild_reflex_memory_v125(st_name):
     st_db = st.session_state.multi_db[st_name]
     memory = {f"{i:02d}": {"dau": [0]*10, "duoi": [0]*10, "tong": [0]*10, "hieu": [0]*10, "bo": [0]*15} for i in range(100)}
     if len(st_db["history"]) < 2:
@@ -115,8 +110,7 @@ def rebuild_reflex_memory_v123(st_name):
             memory[num_curr]["bo"][get_bo_idx(n_next)] += 1
     st_db["reflex_memory"] = memory
 
-# --- AI ĐIỀU PHỐI ĐỐI TRỌNG THEO TỪNG KỲ CỦA MỖI ĐÀI ---
-def update_ai_weights_v123(st_name):
+def update_ai_weights_v125(st_name):
     st_db = st.session_state.multi_db[st_name]
     if len(st_db["history"]) < 3: return [25.0, 25.0, 25.0, 25.0]
     recent = st_db["history"][:3]
@@ -128,8 +122,7 @@ def update_ai_weights_v123(st_name):
     total = sum(new_w) if sum(new_w) > 0 else 100
     return [(x / total) * 100 for x in new_w]
 
-# --- HÀM TÍNH TOÁN ĐA ENGINE ĐỘC LẬP THEO ĐÀI HÌNH ---
-def calculate_master_v123(st_name):
+def calculate_master_v125(st_name):
     st_db = st.session_state.multi_db[st_name]
     last_gdb = st_db["last_gdb_full"]
     current_num = last_gdb[-2:] if len(last_gdb) >= 2 else "00"
@@ -153,7 +146,7 @@ def calculate_master_v123(st_name):
             list_c_tmp.append(row)
 
     if not st_db.get("reflex_memory") or current_num not in st_db["reflex_memory"]:
-        rebuild_reflex_memory_v123(st_name)
+        rebuild_reflex_memory_v125(st_name)
     ref_map = st_db["reflex_memory"].get(current_num, {})
 
     for i in range(100):
@@ -161,7 +154,6 @@ def calculate_master_v123(st_name):
         t, h = (d + u) % 10, (d - u + 10) % 10
         b_idx = get_bo_idx(i)
         
-        # E1: Khan thuộc tính tổng hợp (Fix triệt để lỗi NameError bằng cách trỏ hàm đa năng)
         e1[i] = st_db["dau"][d] + st_db["duoi"][u] + st_db["tong"][t] + st_db["hieu"][h] + \
                 ((st_db["cham"][d]*2) if d==u else (st_db["cham"][d]+st_db["cham"][u])) + \
                 st_db["bo"][b_idx] + st_db["giap"][find_idx_universal(i, GIAP_12)] + \
@@ -171,7 +163,6 @@ def calculate_master_v123(st_name):
                 st_db["t_tb"][1 if t>=5 else 0] + st_db["h_tb"][1 if h>=5 else 0] + \
                 st_db["so_he"][1 if i not in SO_THUONG else 0]
         
-        # E2: Ma trận điểm Root
         sr = 0
         if st_db["use_root"]:
             for r in [n_date, n_ky, n_gdb]:
@@ -181,13 +172,9 @@ def calculate_master_v123(st_name):
                           ROOT_DATA[r]["cham"].index(d) + ROOT_DATA[r]["cham"].index(u)
         e2[i] = sr
         
-        # E3: Ma trận tịnh tiến bóng âm dương 120 tọa độ
         if len(list_c_tmp) == 10:
-            stt = list_c_tmp[d]["da"] + list_c_tmp[u]["du"] + list_c_tmp[t]["to"] + list_c_tmp[h]["hi"]
-            stt += (list_c_tmp[d]["ch"] * 2) if d == u else (list_c_tmp[d]["ch"] + list_c_tmp[u]["ch"])
-            e3[i] = stt
+            e3[i] = list_c_tmp[d]["da"] + list_c_tmp[u]["du"] + list_c_tmp[t]["to"] + list_c_tmp[h]["hi"]
             
-        # E4 ĐỘC QUYỀN: BỘ NHỚ PHẢN XẠ SỐ LỊCH SỬ
         if ref_map:
             e4[i] = 1000 - ((ref_map["dau"][d] + ref_map["duoi"][u] + ref_map["tong"][t] + ref_map["hieu"][h] + ref_map["bo"][b_idx]) * 15)
         else:
@@ -198,12 +185,11 @@ def calculate_master_v123(st_name):
     df["DIEM_TONG"] = (df["E1"]*w[0] + df["E2"]*w[1] + df["E3"]*w[2] + df["E4"]*w[3]) / 4
     return df
 
-def find_rank_unique_v123(df, target, col, asc=True):
+def find_rank_unique_v125(df, target, col, asc=True):
     temp = df[['SO', col]].sort_values(by=[col, 'SO'], ascending=[asc, True]).reset_index(drop=True)
     match = temp[temp['SO'] == target].index
     return int(match[0]) + 1 if len(match) > 0 else 50
 
-# --- QUY TRÌNH NUÔI ĐIỂM KHI CẬP NHẬT SỐ THEO ĐÀI CỐ ĐỊNH ---
 def process_multi_update():
     st_name = st.session_state.current_station
     st_db = st.session_state.multi_db[st_name]
@@ -215,12 +201,12 @@ def process_multi_update():
     n = int(raw[-2:])
     target_str = f"{n:02d}"
     
-    df_old = calculate_master_v123(st_name)
-    r_ai = find_rank_unique_v123(df_old, target_str, "DIEM_TONG", asc=True)
-    r_e1 = find_rank_unique_v123(df_old, target_str, "E1", asc=True)
-    r_e2 = find_rank_unique_v123(df_old, target_str, "E2", asc=True)
-    r_e3 = find_rank_unique_v123(df_old, target_str, "E3", asc=False)
-    r_e4 = find_rank_unique_v123(df_old, target_str, "E4", asc=True)
+    df_old = calculate_master_v125(st_name)
+    r_ai = find_rank_unique_v125(df_old, target_str, "DIEM_TONG", asc=True)
+    r_e1 = find_rank_unique_v125(df_old, target_str, "E1", asc=True)
+    r_e2 = find_rank_unique_v125(df_old, target_str, "E2", asc=True)
+    r_e3 = find_rank_unique_v125(df_old, target_str, "E3", asc=False)
+    r_e4 = find_rank_unique_v125(df_old, target_str, "E4", asc=True)
     
     st_db["history"].insert(0, {
         "Kỳ": int(st_db["ky_quay"]), "GĐB": raw, "Số": target_str,
@@ -228,7 +214,6 @@ def process_multi_update():
         "Time": datetime.now().strftime("%H:%M")
     })
     
-    # Tiến hành nuôi Khan cho đài
     dv, duv, tv, hv = n//10, n%10, (n//10+n%10)%10, (n//10-n%10+10)%10
     for i in range(10):
         st_db["dau"][i] = 0 if i==dv else st_db["dau"][i]+1
@@ -253,7 +238,6 @@ def process_multi_update():
     st_db["t_tb"][1 if tv>=5 else 0]=0; st_db["t_tb"][0 if tv>=5 else 1]+=1
     st_db["h_tb"][1 if hv>=5 else 0]=0; st_db["h_tb"][0 if hv>=5 else 1]+=1
 
-    # Tiến hành nuôi Tịnh tiến cho đài
     all_a_old = build_bang_a_tien_tien(st_db["last_gdb_full"])
     if len(all_a_old) == 120:
         target_tt = {"dau": dv, "duoi": duv, "tong": tv, "hieu": hv, "cham": [dv, duv]}
@@ -265,19 +249,17 @@ def process_multi_update():
 
     st_db["last_gdb_full"] = raw
     st_db["ky_quay"] += 1
-    rebuild_reflex_memory_v123(st_name)
-    st_db["weights"] = update_ai_weights_v123(st_name)
+    rebuild_reflex_memory_v125(st_name)
+    st_db["weights"] = update_ai_weights_v125(st_name)
     st.rerun()
 
-# --- 10. BẢN ĐIỀU KHIỂN GIAO DIỆN CHÍNH ĐA ĐÀI ---
-st.title("🛡️ COMMANDER MULTI-STATION V12.3")
+# --- 3. ĐIỀU KHIỂN GIAO DIỆN CHÍNH ---
+st.title("🛡️ COMMANDER MASTER V12.5")
 
 with st.sidebar:
     st.header("🏢 KHU VỰC ĐÀI QUAY")
     st.session_state.current_station = st.selectbox(
-        "CHỌN ĐÀI MUỐN SOI:", 
-        list(st.session_state.multi_db.keys()), 
-        key="station_select"
+        "CHỌN ĐÀI SOI:", list(st.session_state.multi_db.keys()), key="station_select"
     )
     
     new_st = st.text_input("➕ Kích hoạt đài mới (Gõ liền):")
@@ -288,11 +270,15 @@ with st.sidebar:
             st.rerun()
             
     st.divider()
-    up = st.file_uploader("📥 Khôi Phục File .Json Toàn Đài:", type="json")
+    # TRẢ LẠI Ô LOAD FILE VÀ NÚT BẤM VẬT LÝ ÉP BUỘC XÁC NHẬN NẠP DATA
+    up = st.file_uploader("📥 Chọn File .Json Toàn Đài:", type="json")
     if up:
-        st.session_state.multi_db = json.load(up)
-        st.rerun()
-    if st.button("🔴 LÀM SẠCH BỘ NHỚ (RESET)"):
+        if st.button("✅ KÍCH HOẠT NẠP DỮ LIỆU ĐÀI", type="primary", use_container_width=True):
+            st.session_state.multi_db = json.load(up)
+            st.success("Hệ thống đã nạp và đồng bộ hóa thành công!")
+            st.rerun()
+            
+    if st.button("🔴 LÀM SẠCH BỘ NHỚ (RESET)", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
@@ -301,26 +287,22 @@ current_db = st.session_state.multi_db[current_st]
 
 st.info(f"🛰️ Đang nạp hệ thống đài: **[{current_st}]**")
 
-# KHU VỰC NHẬP LIỆU - TRẢ LẠI Ô KỲ QUAY CÓ NÚT CỘNG TRỪ SIÊU TỐC
 c1, c2, c3, c4 = st.columns([1.5, 1.5, 1.2, 1])
 with c1: st.text_input(f"Nhập GĐB Đài {current_st}:", value="67294", key="gdb_in")
 with c2: st.text_input("Ngày Quay Số:", datetime.now().strftime("%d%m%Y"), key="date_in")
-# Thêm ô nhập Kỳ Quay có nút Cộng/Trừ tăng giảm nhanh (step=1) theo ý mày
 with c3: current_db["ky_quay"] = st.number_input("Kỳ hiện tại:", value=int(current_db["ky_quay"]), step=1)
 with c4: st.write("##"); st.toggle("M.TRẬN ROOT", value=current_db["use_root"], key="use_root")
 
 st.button("🚀 CẬP NHẬT RIÊNG CHO ĐÀI NÀY", on_click=process_multi_update, type="primary", use_container_width=True)
 
-# THỰC THI KIỂM SOÁT ĐẦU RA DÀN SỐ
-df_master = calculate_master_v123(current_st)
-active_w = update_ai_weights_v123(current_st)
+df_master = calculate_master_v125(current_st)
+active_w = update_ai_weights_v125(current_st)
 current_db["weights"] = active_w
 
-t1, t2, t3, t4 = st.tabs(["🎯 DÀN AI THEO ĐÀI", "⚖️ ĐỐI TRỌNG ENGINE", "📋 NHẬT KÝ ĐÀI", "🧠 PHẢN XẠ SỐ"])
+t1, t2, t3, t4 = st.tabs(["🎯 DÀN AI THEO ĐÀI", "⚖️ ĐỐI TRỌNG ENGINE", "📋 NHẬT KÝ ĐÀI (THÔNG MINH)", "🧠 PHẢN XẠ SỐ"])
 
 with t1:
     col_n1, col_n2 = st.columns(2)
-    # Thêm nút bấm tăng giảm nhanh (step=1) cho các ô số lượng quân dàn số
     n1 = col_n1.number_input("Số quân dàn kết mỏng:", 1, 100, 36, step=1)
     n2 = col_n2.number_input("Số quân dàn tiêu chuẩn:", 1, 100, 51, step=1)
     st.write("---")
@@ -343,9 +325,20 @@ with t2:
     st.download_button("💾 XUẤT SAO LƯU TOÀN BỘ CÁC ĐÀI (.JSON)", json.dumps(st.session_state.multi_db), "MULTI_STATION_DATA.json", use_container_width=True)
 
 with t3:
+    # TRẢ LẠI BẢNG THỐNG KÊ LỊCH SỬ THÔNG MINH PHÂN NHÓM % VÀ BIỂU ĐỒ RANK ĐỘNG CỦA APP GỐC
     if current_db["history"]:
-        st.subheader(f"📋 Bảng Tra Cứu Rank Hiệu Quả Đài {current_st}")
-        st.table(pd.DataFrame(current_db["history"])[['Kỳ', 'GĐB', 'Số', 'Rank_AI', 'Rank_E1', 'Rank_E2', 'Rank_E3', 'Rank_E4']])
+        st.subheader("📋 Bảng Tra Cứu Rank Hiệu Quả Thực Tế")
+        df_hist = pd.DataFrame(current_db["history"])
+        st.table(df_hist[['Kỳ', 'GĐB', 'Số', 'Rank_AI', 'Rank_E1', 'Rank_E2', 'Rank_E3', 'Rank_E4']])
+        
+        st.divider()
+        st.subheader("📊 Phân Nhóm Thống Kê Hiệu Quả Vị Trí Ăn")
+        rks = df_hist["Rank_AI"].tolist()
+        gs = [sum(1 for r in rks if 1<=r<=10), sum(1 for r in rks if 11<=r<=39), sum(1 for r in rks if 40<=r<=59), sum(1 for r in rks if 60<=r<=75), sum(1 for r in rks if 76<=r<=100)]
+        st.table(pd.DataFrame({"Phân nhóm Rank": ["1-10 (Siêu chuẩn)","11-39 (Trong Dàn 36)","40-59 (Trong Dàn 51)","60-75 (Rìa Dàn)","76-100 (Trượt Cầu)"], "Số lần nổ": gs, "Tỷ lệ đạt (%)": [f"{(x/len(rks))*100:.1f}%" for x in gs]}))
+        st.line_chart(df_hist['Rank_AI'])
+    else:
+        st.info("Chưa có lịch sử quay thưởng.")
 
 with t4:
     last_num = current_db["last_gdb_full"][-2:] if len(current_db["last_gdb_full"]) >= 2 else "00"
