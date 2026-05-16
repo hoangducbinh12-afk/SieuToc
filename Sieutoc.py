@@ -4,21 +4,30 @@ import numpy as np
 import json
 from datetime import datetime
 
-# --- 1. CONFIG MOBILE ---
-st.set_page_config(page_title="TUAN PHONG V18.9", layout="centered")
+# --- 1. CONFIG MOBILE ULTRA ---
+st.set_page_config(page_title="TUAN PHONG V19.1", layout="centered")
 
 st.markdown("""
     <style>
-    .dan-box { background-color: white; border-radius: 12px; padding: 15px; border: 1px solid #E0E4E8; margin-bottom: 10px; font-family: 'Roboto Mono', monospace; font-weight: 700; color: #1e293b; font-size: 1.2rem; line-height: 1.8; text-align: center; }
-    .dan-1 { border-left: 6px solid #10b981; background-color: #f0fdf4; }
-    .dan-2 { border-left: 6px solid #3b82f6; background-color: #eff6ff; }
-    .stButton button { border-radius: 10px; height: 3rem; font-weight: bold; width: 100%; }
-    /* Giảm font size bảng để vừa Mobile */
-    .stTable td, .stTable th { font-size: 0.8rem !important; padding: 2px !important; }
+    .dan-box { 
+        background-color: white; border-radius: 10px; padding: 10px; 
+        border: 1px solid #d1d5db; margin-bottom: 8px; 
+        font-family: 'JetBrains Mono', monospace; font-weight: 700; 
+        color: #1e293b; font-size: 0.95rem; line-height: 1.6; text-align: center; 
+    }
+    .dan-1 { border-left: 5px solid #10b981; background-color: #f0fdf4; }
+    .dan-2 { border-left: 5px solid #3b82f6; background-color: #eff6ff; }
+    
+    /* Tối ưu bảng Nhật ký căn giữa & thu nhỏ */
+    .stTable td, .stTable th { 
+        font-size: 0.72rem !important; padding: 2px !important; 
+        text-align: center !important; white-space: nowrap;
+    }
+    .stButton button { border-radius: 8px; height: 2.8rem; font-weight: bold; width: 100%; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. HÀM TOÁN HỌC ---
+# --- 2. LOGIC HÀM ---
 B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
 B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
 
@@ -34,11 +43,7 @@ def build_mt_120(g):
 
 def run_ai_weights(history):
     if len(history) < 3: return [25.0, 25.0, 25.0, 25.0]
-    scores = []
-    for k in ["Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]:
-        vals = [h.get(k, 50) for h in history[:15]]
-        avg = np.mean(vals); std = np.std(vals) if np.std(vals) > 0 else 1
-        scores.append(avg / std)
+    scores = [np.mean([h.get(k, 50) for h in history[:15]]) / (np.std([h.get(k, 50) for h in history[:15]]) or 1) for k in ["Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]]
     total = sum(scores)
     res = [round((s/total)*100, 1) for s in scores]
     res[0] = round(res[0] + (100.0 - sum(res)), 1)
@@ -81,22 +86,23 @@ def calculate_master(use_ai):
     return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":rk(e1), "R2":rk(e2), "R3":rk(e3, True), "R4":rk(e4)}), w_calc
 
 # --- 5. GIAO DIỆN ---
-st.title("🛡️ TUAN PHONG V18.9")
+st.markdown("<h3 style='text-align: center;'>🛡️ TUAN PHONG V19.1</h3>", unsafe_allow_html=True)
 
-# PHẦN NHẬP SỐ
-c_in1, c_in2 = st.columns([2, 1])
-with c_in1: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
-with c_in2: ky_now = st.number_input("Kỳ Quay:", value=int(db["ky_quay"]), step=1)
+# HÀNG NHẬP LIỆU: NGÀY | GĐB | KỲ
+c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
+with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
+with c_gdb: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
+with c_ky: ky_now = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
 
 if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
     if len(gdb_now) >= 5:
         df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True))
         target = f"{int(gdb_now[-2:]):02d}"
         db["history"].insert(0, {
-            "Ngày": datetime.now().strftime("%d/%m"), 
+            "Ngày": day_in,
             "Kỳ": int(ky_now), 
             "Số": target, 
-            "Rank_AI": int(df_old[df_old['SO']==target].index[0]+1), 
+            "R_AI": int(df_old[df_old['SO']==target].index[0]+1), 
             "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]),
             "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]),
             "Rank_E3": int(df_old.loc[df_old['SO']==target, 'R3'].values[0]),
@@ -112,42 +118,28 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
 
 st.divider()
 
-# TABS CHÍNH
-tab_main, tab_setup, tab_log = st.tabs(["🎯 LẤY DÀN", "⚖️ ĐỐI TRỌNG", "📊 NHẬT KÝ"])
+# TABS
+tab_dan, tab_setup, tab_log = st.tabs(["🎯 DÀN", "⚖️ AI", "📊 NHẬT KÝ"])
 
-with tab_main:
-    is_ai = st.toggle("🤖 AI Tự Điều Chỉnh", key="ai_auto_w", value=True)
+with tab_dan:
+    is_ai = st.toggle("🤖 AI Auto Mode", key="ai_auto_w", value=True)
     df_res, w_active = calculate_master(is_ai)
     
-    col_n1, col_n2 = st.columns(2)
-    st.session_state.num1 = col_n1.number_input("Dàn 1:", 1, 90, st.session_state.num1)
-    st.session_state.num2 = col_n2.number_input("Dàn 2:", 1, 90, st.session_state.num2)
+    c_n1, c_n2 = st.columns(2)
+    st.session_state.num1 = c_n1.number_input("Dàn 1:", 1, 90, st.session_state.num1)
+    st.session_state.num2 = c_n2.number_input("Dàn 2:", 1, 90, st.session_state.num2)
     
     ds_sorted = df_res.sort_values("TOTAL")["SO"].tolist()
     d1_f = ", ".join(ds_sorted[:st.session_state.num1])
     d2_f = ", ".join(ds_sorted[:st.session_state.num2])
     
-    st.markdown(f"**Dàn 1 ({st.session_state.num1} số):**")
     st.markdown(f"<div class='dan-box dan-1'>{d1_f}</div>", unsafe_allow_html=True)
-    st.markdown(f"**Dàn 2 ({st.session_state.num2} số):**")
     st.markdown(f"<div class='dan-box dan-2'>{d2_f}</div>", unsafe_allow_html=True)
 
 with tab_setup:
-    st.subheader("📡 % Hiện Tại")
-    cols = st.columns(4); names = ["E1","E2","E3","E4"]
-    for i in range(4): cols[i].metric(names[i], f"{w_active[i]}%")
-    
+    st.write(f"**E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%**")
     st.divider()
-    if not is_ai:
-        st.write("⚙️ **Chỉnh tay:**")
-        ci = st.columns(4)
-        for i in range(4):
-            db["weights"][i] = ci[i].number_input(f"{names[i]}", 0.0, 100.0, float(db["weights"][i]), key=f"w{i}")
-    else:
-        st.info("AI đang khóa đối trọng.")
-        db["weights"] = w_active
-
-    st.download_button("💾 Lưu File .JSON", json.dumps(st.session_state.db), "data_export.json", use_container_width=True)
+    st.download_button("💾 Lưu File", json.dumps(st.session_state.db), f"data_{datetime.now().strftime('%H%M')}.json", use_container_width=True)
     up = st.file_uploader("Nạp File", type="json")
     if up: 
         st.session_state.db = json.load(up)
@@ -155,10 +147,6 @@ with tab_setup:
 
 with tab_log:
     if db["history"]:
-        st.write("### Lịch sử 15 kỳ")
-        # Hiển thị đầy đủ các cột Rank E1, E2, E3, E4
-        df_history = pd.DataFrame(db["history"])
-        cols_to_show = ["Số", "Rank_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]
-        # Chỉ lấy những cột tồn tại trong dữ liệu
-        final_cols = [c for c in cols_to_show if c in df_history.columns]
-        st.table(df_history[final_cols].head(15))
+        df_h = pd.DataFrame(db["history"]).head(20)
+        # Hiển thị bảng nhật ký đầy đủ cột Ngày, Kỳ và các Rank
+        st.table(df_h[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
