@@ -263,7 +263,6 @@ def process_multi_update():
     st_db["ky_quay"] += 1
     rebuild_reflex_memory_v127(st_name)
     st_db["weights"] = update_ai_weights_v127(st_name)
-    st.rerun()
 
 # --- 5. GIAO DIỆN CHÍNH ---
 st.title("🛡️ COMMANDER MASTER V12.7")
