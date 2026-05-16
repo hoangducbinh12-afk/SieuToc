@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG MOBILE ---
-st.set_page_config(page_title="TUAN PHONG V18.8", layout="centered")
+st.set_page_config(page_title="TUAN PHONG V18.9", layout="centered")
 
 st.markdown("""
     <style>
@@ -13,6 +13,8 @@ st.markdown("""
     .dan-1 { border-left: 6px solid #10b981; background-color: #f0fdf4; }
     .dan-2 { border-left: 6px solid #3b82f6; background-color: #eff6ff; }
     .stButton button { border-radius: 10px; height: 3rem; font-weight: bold; width: 100%; }
+    /* Giảm font size bảng để vừa Mobile */
+    .stTable td, .stTable th { font-size: 0.8rem !important; padding: 2px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -76,10 +78,10 @@ def calculate_master(use_ai):
         if uk in db["ref_duoi"]: e4[i] += db["ref_duoi"][uk]["u"][u]
     
     total = (rk(e1)*w_calc[0] + rk(e2)*w_calc[1] + rk(e3, True)*w_calc[2] + rk(e4, True)*w_calc[3])/100
-    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":rk(e1), "R4":rk(e4)}), w_calc
+    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":rk(e1), "R2":rk(e2), "R3":rk(e3, True), "R4":rk(e4)}), w_calc
 
 # --- 5. GIAO DIỆN ---
-st.title("🛡️ TUAN PHONG V18.8")
+st.title("🛡️ TUAN PHONG V18.9")
 
 # PHẦN NHẬP SỐ
 c_in1, c_in2 = st.columns([2, 1])
@@ -90,7 +92,16 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
     if len(gdb_now) >= 5:
         df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True))
         target = f"{int(gdb_now[-2:]):02d}"
-        db["history"].insert(0, {"Ngày": datetime.now().strftime("%d/%m"), "Kỳ": ky_now, "Số": target, "Rank_AI": int(df_old[df_old['SO']==target].index[0]+1), "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]), "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])})
+        db["history"].insert(0, {
+            "Ngày": datetime.now().strftime("%d/%m"), 
+            "Kỳ": int(ky_now), 
+            "Số": target, 
+            "Rank_AI": int(df_old[df_old['SO']==target].index[0]+1), 
+            "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]),
+            "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]),
+            "Rank_E3": int(df_old.loc[df_old['SO']==target, 'R3'].values[0]),
+            "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])
+        })
         dv, du, tv = int(target)//10, int(target)%10, (int(target)//10 + int(target)%10)%10
         for i in range(10):
             db["dau"][i] = 0 if i==dv else db["dau"][i]+1
@@ -109,8 +120,8 @@ with tab_main:
     df_res, w_active = calculate_master(is_ai)
     
     col_n1, col_n2 = st.columns(2)
-    st.session_state.num1 = col_n1.number_input("Số quân Dàn 1:", 1, 90, st.session_state.num1)
-    st.session_state.num2 = col_n2.number_input("Số quân Dàn 2:", 1, 90, st.session_state.num2)
+    st.session_state.num1 = col_n1.number_input("Dàn 1:", 1, 90, st.session_state.num1)
+    st.session_state.num2 = col_n2.number_input("Dàn 2:", 1, 90, st.session_state.num2)
     
     ds_sorted = df_res.sort_values("TOTAL")["SO"].tolist()
     d1_f = ", ".join(ds_sorted[:st.session_state.num1])
@@ -122,13 +133,13 @@ with tab_main:
     st.markdown(f"<div class='dan-box dan-2'>{d2_f}</div>", unsafe_allow_html=True)
 
 with tab_setup:
-    st.subheader("📡 % Đang Áp Dụng")
+    st.subheader("📡 % Hiện Tại")
     cols = st.columns(4); names = ["E1","E2","E3","E4"]
     for i in range(4): cols[i].metric(names[i], f"{w_active[i]}%")
     
     st.divider()
     if not is_ai:
-        st.write("⚙️ **Chỉnh tay đối trọng:**")
+        st.write("⚙️ **Chỉnh tay:**")
         ci = st.columns(4)
         for i in range(4):
             db["weights"][i] = ci[i].number_input(f"{names[i]}", 0.0, 100.0, float(db["weights"][i]), key=f"w{i}")
@@ -137,12 +148,17 @@ with tab_setup:
         db["weights"] = w_active
 
     st.download_button("💾 Lưu File .JSON", json.dumps(st.session_state.db), "data_export.json", use_container_width=True)
-    up = st.file_uploader("Nạp File mới", type="json")
+    up = st.file_uploader("Nạp File", type="json")
     if up: 
         st.session_state.db = json.load(up)
         st.rerun()
 
 with tab_log:
     if db["history"]:
-        st.write("### 10 kỳ gần nhất")
-        st.table(pd.DataFrame(db["history"]).head(10))
+        st.write("### Lịch sử 15 kỳ")
+        # Hiển thị đầy đủ các cột Rank E1, E2, E3, E4
+        df_history = pd.DataFrame(db["history"])
+        cols_to_show = ["Số", "Rank_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]
+        # Chỉ lấy những cột tồn tại trong dữ liệu
+        final_cols = [c for c in cols_to_show if c in df_history.columns]
+        st.table(df_history[final_cols].head(15))
