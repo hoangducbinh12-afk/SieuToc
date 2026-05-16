@@ -5,15 +5,14 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG & STYLE ---
-st.set_page_config(page_title="TUAN PHONG V17.8 FINAL", layout="wide")
+st.set_page_config(page_title="TUAN PHONG V17.9 FINAL FIX", layout="wide")
 st.markdown("""<style>
     .main-box { background-color: #ffffff; color: #1e293b; padding: 12px; border-radius: 10px; font-family: 'JetBrains Mono'; font-size: 0.82rem; border: 2px solid #3b82f6; font-weight: 700; text-align: center; }
     .stTable td { font-weight: bold !important; text-align: center !important; font-size: 11px !important; }
 </style>""", unsafe_allow_html=True)
 
-# --- 2. QUY LUẬT & HÀM KHỞI TẠO ---
-B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
-B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
+# --- 2. QUY LUẬT & KHỞI TẠO ---
+B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}; B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
 SO_THUONG = [2,3,4,6,8,13,15,17,18,19,20,24,25,26,28,30,31,35,37,39,40,42,46,47,48,51,52,53,57,59,60,62,64,68,69,71,73,74,75,79,80,81,82,84,86,91,93,95,96,97]
 
 def get_5050_attrs(n):
@@ -34,10 +33,9 @@ def create_blank():
     return {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[], "bang_b_points":[{"dau":1} for _ in range(120)], "ref_dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "ref_duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "weights": [25.0]*4}
 
 def stats_rank(arr, rev=False):
-    vals = np.array(arr)
-    return np.argsort(np.argsort(-vals if rev else vals)) + 1
+    vals = np.array(arr); return np.argsort(np.argsort(-vals if rev else vals)) + 1
 
-def run_ai_weights(history):
+def run_ai_weights_v2(history):
     if len(history) < 3: return [25.0]*4
     scores = []
     for k in ["Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]:
@@ -45,33 +43,11 @@ def run_ai_weights(history):
         avg = np.mean(vals); std = np.std(vals) if np.std(vals) > 0 else 1
         scores.append(avg / std)
     total = sum(scores)
-    res = [round((s/total)*100, 1) for s in scores]
-    res[0] = round(res[0] + (100.0 - sum(res)), 1)
-    return res
+    final_w = [round((s/total)*100, 1) for s in scores]
+    final_w[0] = round(final_w[0] + (100.0 - sum(final_w)), 1)
+    return final_w
 
-# --- 3. ENGINE TÍNH TOÁN ---
-def calculate_master(st_name):
-    db = st.session_state.multi_db[st_name]
-    w_calc = run_ai_weights(db["history"]) if st.session_state.get('ai_auto_w', False) else db.get("weights", [25.0]*4)
-    last_g = db.get("last_gdb_full", "00000")
-    e1, e2, e3, e4 = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
-    mt = build_mt_120(last_g)
-    v_e3 = [sum(db["bang_b_points"][idx].get("dau", 1) for idx, v in enumerate(mt) if v == n) for n in range(10)]
-    dk, uk = last_g[-2:-1] if len(last_g)>=2 else "0", last_g[-1:] if len(last_g)>=1 else "0"
-
-    for i in range(100):
-        d, u, t = i//10, i%10, (i//10+i%10)%10
-        e1[i] = db["dau"][d] + db["duoi"][u] + db["tong"][t]
-        e2[i] = (sum(int(x) for x in last_g if x.isdigit()) % 10) + u
-        e3[i] = v_e3[d] + v_e3[u]
-        if dk in db["ref_dau"]: e4[i] += db["ref_dau"][dk]["d"][d]
-        if uk in db["ref_duoi"]: e4[i] += db["ref_duoi"][uk]["u"][u]
-
-    r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
-    total = (r1*w_calc[0] + r2*w_calc[1] + r3*w_calc[2] + r4*w_calc[3])/100
-    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":r1, "R2":r2, "R3":r3, "R4":r4}), w_calc
-
-# --- 4. GIAO DIỆN ---
+# --- 3. KHỞI TẠO DB ---
 if 'multi_db' not in st.session_state: st.session_state.multi_db = {"MB": create_blank()}
 
 with st.sidebar:
@@ -82,6 +58,32 @@ with st.sidebar:
     if st.button("🔴 RESET ALL"): st.session_state.clear(); st.rerun()
 
 db = st.session_state.multi_db[st.session_state.current_station]
+
+# --- 4. ENGINE (TÍNH TOÁN TRƯỚC KHI HIỂN THỊ) ---
+def calculate_master(st_name):
+    local_db = st.session_state.multi_db[st_name]
+    # AI TÍNH TOÁN %
+    w_calc = run_ai_weights_v2(local_db["history"]) if st.session_state.get('ai_auto_w', False) else local_db.get("weights", [25.0]*4)
+    
+    last_g = local_db.get("last_gdb_full", "00000")
+    e1, e2, e3, e4 = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
+    mt = build_mt_120(last_g)
+    v_e3 = [sum(local_db["bang_b_points"][idx].get("dau", 1) for idx, v in enumerate(mt) if v == n) for n in range(10)]
+    dk, uk = last_g[-2:-1] if len(last_g)>=2 else "0", last_g[-1:] if len(last_g)>=1 else "0"
+
+    for i in range(100):
+        d, u, t = i//10, i%10, (i//10+i%10)%10
+        e1[i] = local_db["dau"][d] + local_db["duoi"][u] + local_db["tong"][t]
+        e2[i] = (sum(int(x) for x in last_g if x.isdigit()) % 10) + u
+        e3[i] = v_e3[d] + v_e3[u]
+        if dk in local_db["ref_dau"]: e4[i] += local_db["ref_dau"][dk]["d"][d]
+        if uk in local_db["ref_duoi"]: e4[i] += local_db["ref_duoi"][uk]["u"][u]
+
+    r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
+    total = (r1*w_calc[0] + r2*w_calc[1] + r3*w_calc[2] + r4*w_calc[3])/100
+    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":r1, "R2":r2, "R3":r3, "R4":r4}), w_calc
+
+# --- 5. GIAO DIỆN CHÍNH ---
 c1, c2, c3 = st.columns([1,2,1])
 with c1: st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"), key="day_in")
 with c2: st.text_input("GĐB Vừa Ra:", value=db.get("last_gdb_full", "00000"), key="gdb_in")
@@ -98,31 +100,38 @@ if st.button("🚀 CẬP NHẬT HỆ THỐNG", type="primary", use_container_wid
             db["dau"][i] = 0 if i==dv else db["dau"][i]+1
             db["duoi"][i] = 0 if i==du else db["duoi"][i]+1
             db["tong"][i] = 0 if i==tv else db["tong"][i]+1
-        # Cập nhật phản xạ
         prev_n = db["history"][1]["Số"] if len(db["history"])>1 else "00"
-        p_d, p_u = str(int(prev_n)//10), str(int(prev_n)%10)
-        db["ref_dau"][p_d]["d"][dv] += 1; db["ref_duoi"][p_u]["u"][du] += 1
+        db["ref_dau"][str(int(prev_n)//10)]["d"][dv] += 1
+        db["ref_duoi"][str(int(prev_n)%10)]["u"][du] += 1
         db["last_gdb_full"], db["ky_quay"] = raw, db["ky_quay"]+1
         st.rerun()
 
-df_m, w_active = calculate_master(st.session_state.current_station)
+# LẤY KẾT QUẢ ĐỂ HIỂN THỊ
+df_res, w_active = calculate_master(st.session_state.current_station)
+
 t1, t2, t3, t4 = st.tabs(["🎯 DÀN AI", "⚖️ ĐỐI TRỌNG", "📊 NHẬT KÝ", "🔍 BIẾN 50/50"])
 
 with t1:
     cs1, cs2 = st.columns(2); num1 = cs1.slider("Dàn 1:", 10, 90, 36); num2 = cs2.slider("Dàn 2:", 10, 90, 51)
-    ds = df_m.sort_values("TOTAL")["SO"].tolist()
+    ds = df_res.sort_values("TOTAL")["SO"].tolist()
     st.markdown(f"**DÀN {num1}:**<br><div class='main-box'>{' '.join(ds[:num1])}</div>", unsafe_allow_html=True)
     st.markdown(f"**DÀN {num2}:**<br><div class='main-box' style='border-color:#10b981'>{' '.join(ds[:num2])}</div>", unsafe_allow_html=True)
 
 with t2:
     st.toggle("🤖 KÍCH HOẠT AI TỰ ĐIỀU CHỈNH ĐỐI TRỌNG", key="ai_auto_w")
-    st.subheader("📡 % Đang áp dụng")
-    cw = st.columns(4); names = ["E1","E2","E3","E4"]
-    for i in range(4): cw[i].metric(names[i], f"{w_active[i]}%")
+    # HIỂN THỊ METRIC XANH ĐỎ
+    st.subheader("📡 % AI Cân đối nhịp")
+    cw = st.columns(4); names = ["E1 (Khan)","E2 (GĐB)","E3 (Tịnh)","E4 (Phản)"]
+    for i in range(4):
+        cw[i].metric(names[i], f"{w_active[i]}%", delta=f"{round(w_active[i]-25,1)}%" if st.session_state.ai_auto_w else None)
+    
     st.divider()
+    st.write("⚙️ Cài đặt nhập tay (Vô hiệu hóa khi bật AI):")
     ci = st.columns(4)
-    for i in range(4): db["weights"][i] = ci[i].number_input(f"Nhập {names[i]}", 0.0, 100.0, float(db["weights"][i]), disabled=st.session_state.ai_auto_w, key=f"m_{i}")
-    st.download_button("💾 LƯU FILE", json.dumps(st.session_state.multi_db), "DATA.json", use_container_width=True)
+    # NẾU BẬT AI, ÉP DỮ LIỆU NHẬP TAY PHẢI THEO AI ĐỂ KHÔNG BỊ NHẢY
+    for i in range(4):
+        db["weights"][i] = ci[i].number_input(f"Chỉnh {names[i]}", 0.0, 100.0, float(w_active[i]), disabled=st.session_state.ai_auto_w, key=f"manual_{i}")
+    st.divider(); st.download_button("💾 LƯU FILE", json.dumps(st.session_state.multi_db), "DATA.json", use_container_width=True)
 
 with t3:
     if db["history"]: st.table(pd.DataFrame(db["history"])[[c for c in ['Ngày','Kỳ','GĐB','Số','Rank_AI','Rank_E1','Rank_E2','Rank_E3','Rank_E4'] if c in pd.DataFrame(db["history"]).columns]])
