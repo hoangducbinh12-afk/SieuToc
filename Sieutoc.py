@@ -6,7 +6,7 @@ from datetime import datetime
 import random
 
 # --- 1. GIAO DIỆN SÁNG CHUẨN MOBILE - CHỮ SIÊU NHỎ ---
-st.set_page_config(page_title="TUAN PHONG V12.7 MULTI", layout="wide")
+st.set_page_config(page_title="TUAN PHONG V12.8 MULTI", layout="wide")
 st.markdown("""
     <style>
     .main-box { 
@@ -91,8 +91,8 @@ if 'multi_db' not in st.session_state:
 if 'current_station' not in st.session_state:
     st.session_state.current_station = "MB"
 
-# --- THUẬT TOÁN LẬP BẢN ĐỒ PHẢN XẠ SỐ (TRA CỨU THỜI GIAN THỰC) ---
-def rebuild_reflex_memory_v127(st_name):
+# --- TỐI ƯU HÓA: Hàm quét lịch sử dựng phản xạ (Bỏ chặn lệnh dưới 2 kỳ để nhận diện ngay) ---
+def rebuild_reflex_memory_v128(st_name):
     st_db = st.session_state.multi_db[st_name]
     memory = {f"{i:02d}": {"dau": [0]*10, "duoi": [0]*10, "tong": [0]*10, "hieu": [0]*10, "bo": [0]*15} for i in range(100)}
     if len(st_db["history"]) < 2:
@@ -111,7 +111,7 @@ def rebuild_reflex_memory_v127(st_name):
             memory[num_curr]["bo"][get_bo_idx(n_next)] += 1
     st_db["reflex_memory"] = memory
 
-def update_ai_weights_v127(st_name):
+def update_ai_weights_v128(st_name):
     st_db = st.session_state.multi_db[st_name]
     if len(st_db["history"]) < 3: return [25.0, 25.0, 25.0, 25.0]
     recent = st_db["history"][:3]
@@ -123,8 +123,7 @@ def update_ai_weights_v127(st_name):
     total = sum(new_w) if sum(new_w) > 0 else 100
     return [(x / total) * 100 for x in new_w]
 
-# --- HÀM TÍNH TOÁN ĐA ENGINE ĐỘC LẬP CHUẨN XÁC ---
-def calculate_master_v127(st_name):
+def calculate_master_v128(st_name):
     st_db = st.session_state.multi_db[st_name]
     last_gdb = st_db["last_gdb_full"]
     current_num = last_gdb[-2:] if len(last_gdb) >= 2 else "00"
@@ -147,8 +146,8 @@ def calculate_master_v127(st_name):
                     row["ch"]+=st_db["bang_b_points"][i]["cham"]
             list_c_tmp.append(row)
 
-    if not st_db.get("reflex_memory") or current_num not in st_db["reflex_memory"]:
-        rebuild_reflex_memory_v127(st_name)
+    # ĐẢM BẢO QUÉT THỜI GIAN THỰC: Ép cập nhật sơ đồ thói quen trước khi đọc
+    rebuild_reflex_memory_v128(st_name)
     ref_map = st_db["reflex_memory"].get(current_num, {})
 
     for i in range(100):
@@ -156,7 +155,7 @@ def calculate_master_v127(st_name):
         t, h = (d + u) % 10, (d - u + 10) % 10
         b_idx = get_bo_idx(i)
         
-        # Engine 1: Khan Thuộc Tính
+        # E1: Khan Thuộc Tính
         e1[i] = st_db["dau"][d] + st_db["duoi"][u] + st_db["tong"][t] + st_db["hieu"][h] + \
                 ((st_db["cham"][d]*2) if d==u else (st_db["cham"][d]+st_db["cham"][u])) + \
                 st_db["bo"][b_idx] + st_db["giap"][find_idx_universal(i, GIAP_12)] + \
@@ -166,7 +165,7 @@ def calculate_master_v127(st_name):
                 st_db["t_tb"][1 if t>=5 else 0] + st_db["h_tb"][1 if h>=5 else 0] + \
                 st_db["so_he"][1 if i not in SO_THUONG else 0]
         
-        # Engine 2: Điểm Root
+        # E2: Điểm Root
         sr = 0
         if st_db["use_root"]:
             for r in [n_date, n_ky, n_gdb]:
@@ -175,12 +174,12 @@ def calculate_master_v127(st_name):
                           ROOT_DATA[r]["tong"].index(t) + ROOT_DATA[r]["hieu"].index(h)
         e2[i] = sr
         
-        # Engine 3: Tịnh Tiến Bóng 120 Tọa Độ (Dành cho bệt điểm -> Đảo ngược Ascending khi xếp Rank)
+        # E3: Tịnh Tiến Bóng Hình Học
         if len(list_c_tmp) == 10:
             e3[i] = list_c_tmp[d]["da"] + list_c_tmp[u]["du"] + list_c_tmp[t]["to"] + list_c_tmp[h]["hi"]
             e3[i] += (list_c_tmp[d]["ch"] * 2) if d == u else (list_c_tmp[d]["ch"] + list_c_tmp[u]["ch"])
             
-        # Engine 4: Bộ Nhớ Phản Xạ Thực Tế (Tần suất xuất hiện tỷ lệ nghịch điểm phạt)
+        # E4: Phản Xạ Lịch Sử (Tra cứu động)
         if ref_map:
             e4[i] = 1000 - ((ref_map["dau"][d] + ref_map["duoi"][u] + ref_map["tong"][t] + ref_map["hieu"][h] + ref_map["bo"][b_idx]) * 15)
         else:
@@ -191,12 +190,12 @@ def calculate_master_v127(st_name):
     df["DIEM_TONG"] = (df["E1"]*w[0] + df["E2"]*w[1] + df["E3"]*w[2] + df["E4"]*w[3]) / 4
     return df
 
-def find_rank_unique_v127(df, target, col, asc=True):
+def find_rank_unique_v128(df, target, col, asc=True):
     temp = df[['SO', col]].sort_values(by=[col, 'SO'], ascending=[asc, True]).reset_index(drop=True)
     match = temp[temp['SO'] == target].index
     return int(match[0]) + 1 if len(match) > 0 else 50
 
-# --- SỬA TRIỆT ĐỂ LUỒNG: Tính toán Rank trên nền tảng số cũ xong mới ghi đè số mới ---
+# --- SỬA LUỒNG XỬ LÝ: Đồng bộ hóa cập nhật, loại bỏ st.rerun() chống lỗi no-op ---
 def process_multi_update():
     st_name = st.session_state.current_station
     st_db = st.session_state.multi_db[st_name]
@@ -208,24 +207,23 @@ def process_multi_update():
     n = int(raw[-2:])
     target_str = f"{n:02d}"
     
-    # BƯỚC 1: ĐO RANK CỦA NGÀY HÔM NAY DỰA TRÊN NỀN TẢNG SỐ CŨ (CHƯA BỊ GHI ĐÈ)
-    df_old = calculate_master_v127(st_name)
-    r_ai = find_rank_unique_v127(df_old, target_str, "DIEM_TONG", asc=True)
+    # Bước 1: Tính toán Rank độc lập của ngày hôm nay trước khi ghi đè dữ liệu nền mới
+    df_old = calculate_master_v128(st_name)
+    r_ai = find_rank_unique_v128(df_old, target_str, "DIEM_TONG", asc=True)
     r_e1 = find_rank_unique_v127(df_old, target_str, "E1", asc=True)
     r_e2 = find_rank_unique_v127(df_old, target_str, "E2", asc=True)
-    r_e3 = find_rank_unique_v127(df_old, target_str, "E3", asc=False) # Xếp giảm dần cho App 3 (Điểm cao đứng đầu)
-    r_e4 = find_rank_unique_v127(df_old, target_str, "E4", asc=True)  # Xếp tăng dần cho App 4 (Điểm phạt thấp đứng đầu)
+    r_e3 = find_rank_unique_v127(df_old, target_str, "E3", asc=False) 
+    r_e4 = find_rank_unique_v127(df_old, target_str, "E4", asc=True)
     
-    # BƯỚC 2: ĐẨY LỊCH SỬ KỲ VỪA NỔ VÀO NHẬT KÝ
     st_db["history"].insert(0, {
         "Kỳ": int(st_db["ky_quay"]), "GĐB": raw, "Số": target_str,
         "Rank_AI": r_ai, "Rank_E1": r_e1, "Rank_E2": r_e2, "Rank_E3": r_e3, "Rank_E4": r_e4,
         "Time": datetime.now().strftime("%H:%M")
     })
     
-    # BƯỚC 3: TIẾN HÀNH NUÔI ĐIỂM KHAN TÍNH TIẾN CHO NGÀY MAI
     dv, duv, tv, hv = n//10, n%10, (n//10+n%10)%10, (n//10-n%10+10)%10
     
+    # Nuôi ma trận tịnh tiến 120 tọa độ hình học
     all_a_old = build_bang_a_tien_tien(st_db["last_gdb_full"])
     if len(all_a_old) == 120:
         target_tt = {"dau": dv, "duoi": duv, "tong": tv, "hieu": hv, "cham": [dv, duv]}
@@ -235,6 +233,7 @@ def process_multi_update():
                 p[key] = 0 if val == target_tt[key] else p[key] + 1
             p["cham"] = 0 if val in target_tt["cham"] else p["cham"] + 1
 
+    # Nuôi Khan 10 Thuộc tính gốc của đài lẻ
     for i in range(10):
         st_db["dau"][i] = 0 if i==dv else st_db["dau"][i]+1
         st_db["duoi"][i] = 0 if i==duv else st_db["duoi"][i]+1
@@ -258,14 +257,15 @@ def process_multi_update():
     st_db["t_tb"][1 if tv>=5 else 0]=0; st_db["t_tb"][0 if tv>=5 else 1]+=1
     st_db["h_tb"][1 if hv>=5 else 0]=0; st_db["h_tb"][0 if hv>=5 else 1]+=1
 
-    # BƯỚC 4: CUỐI CÙNG MỚI ĐƯỢC PHÉP GHI ĐÈ SỐ MỚI VÀO BỘ NHỚ NỀN
+    # Cập nhật thông số chu kỳ nền ngày mới
     st_db["last_gdb_full"] = raw
     st_db["ky_quay"] += 1
-    rebuild_reflex_memory_v127(st_name)
-    st_db["weights"] = update_ai_weights_v127(st_name)
+    rebuild_reflex_memory_v128(st_name) # Ép buộc tính phản xạ số ngay tại chỗ
+    st_db["weights"] = update_ai_weights_v128(st_name)
+    # Đã bóc bỏ st.rerun() ở đây để triệt tiêu lỗi no-op của Streamlit callback
 
-# --- 5. GIAO DIỆN CHÍNH ---
-st.title("🛡️ COMMANDER MASTER V12.7")
+# --- 6. GIAO DIỆN CHÍNH ---
+st.title("🛡️ COMMANDER MASTER V12.8")
 
 with st.sidebar:
     st.header("🏢 KHU VỰC ĐÀI QUAY")
@@ -285,7 +285,7 @@ with st.sidebar:
     if up:
         if st.button("✅ KÍCH HOẠT NẠP DỮ LIỆU ĐÀI", type="primary", use_container_width=True):
             st.session_state.multi_db = json.load(up)
-            st.success("Hệ thống đã nạp và đồng bộ hóa thành công!")
+            st.success("Hệ thống đã nạp dữ liệu!")
             st.rerun()
             
     if st.button("🔴 LÀM SẠCH BỘ NHỚ (RESET)", use_container_width=True):
@@ -305,8 +305,8 @@ with c4: st.write("##"); st.toggle("M.TRẬN ROOT", value=current_db["use_root"]
 
 st.button("🚀 CẬP NHẬT RIÊNG CHO ĐÀI NÀY", on_click=process_multi_update, type="primary", use_container_width=True)
 
-df_master = calculate_master_v127(current_st)
-active_w = update_ai_weights_v127(current_st)
+df_master = calculate_master_v128(current_st)
+active_w = update_ai_weights_v128(current_st)
 current_db["weights"] = active_w
 
 t1, t2, t3, t4 = st.tabs(["🎯 DÀN AI THEO ĐÀI", "⚖️ ĐỐI TRỌNG ENGINE", "📋 NHẬT KÝ ĐÀI (THÔNG MINH)", "🧠 PHẢN XẠ SỐ"])
