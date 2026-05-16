@@ -31,22 +31,32 @@ def build_mt_120(g):
     return ([x for sub in tien for x in sub] + [x for sub in bong for x in sub])[:120]
 
 def run_ai_weights(history):
-    if len(history) < 3: return [25.0]*4
-    scores = [np.mean([h.get(k, 50) for h in history[:15]]) / (np.std([h.get(k, 50) for h in history[:15]]) or 1) for k in ["Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]]
+    if len(history) < 3: return [25.0, 25.0, 25.0, 25.0]
+    scores = []
+    for k in ["Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]:
+        vals = [h.get(k, 50) for h in history[:15]]
+        avg = np.mean(vals); std = np.std(vals) if np.std(vals) > 0 else 1
+        scores.append(avg / std)
     total = sum(scores)
     return [round((s/total)*100, 1) for s in scores]
 
-# --- 3. KHỞI TẠO BỘ NHỚ ---
+# --- 3. KHỞI TẠO BỘ NHỚ (FIXED SYNTAX) ---
 if 'db' not in st.session_state:
-    st.session_state.db = {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[], "bang_b_points":[{"dau":1} for _ in range(120)], "ref_dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "ref_duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)], "weights": [25.0]*4}
+    st.session_state.db = {
+        "dau": [0]*10, "duoi": [0]*10, "tong": [0]*10, 
+        "last_gdb_full": "00000", "ky_quay": 1, "history": [], 
+        "bang_b_points": [{"dau": 1} for _ in range(120)], 
+        "ref_dau": {str(i): {"d": [0]*10, "u": [0]*10} for i in range(10)}, 
+        "ref_duoi": {str(i): {"d": [0]*10, "u": [0]*10} for i in range(10)}, 
+        "weights": [25.0, 25.0, 25.0, 25.0]
+    }
 
-# --- KHÓA SỐ LƯỢNG QUÂN (SESSION STATE) ---
 if 'num1' not in st.session_state: st.session_state.num1 = 11
 if 'num2' not in st.session_state: st.session_state.num2 = 37
 
 db = st.session_state.db
 
-# --- 4. ENGINE ---
+# --- 4. ENGINE TÍNH TOÁN ---
 def calculate_master(use_ai):
     w_calc = run_ai_weights(db["history"]) if use_ai else db.get("weights", [25.0]*4)
     last_g = db.get("last_gdb_full", "00000")
@@ -67,8 +77,8 @@ def calculate_master(use_ai):
     total = (rk(e1)*w_calc[0] + rk(e2)*w_calc[1] + rk(e3, True)*w_calc[2] + rk(e4, True)*w_calc[3])/100
     return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":rk(e1), "R4":rk(e4)}), w_calc
 
-# --- 5. GIAO DIỆN ---
-st.title("🛡️ TUAN PHONG V18.6")
+# --- 5. GIAO DIỆN CHÍNH ---
+st.title("🛡️ TUAN PHONG MOBILE")
 
 with st.expander("📁 QUẢN LÝ FILE .JSON"):
     up = st.file_uploader("Nạp File", type="json")
@@ -77,7 +87,6 @@ with st.expander("📁 QUẢN LÝ FILE .JSON"):
         st.rerun()
     st.download_button("💾 Tải Xuống File", json.dumps(st.session_state.db), f"data_{datetime.now().strftime('%d%H%M')}.json", use_container_width=True)
 
-# NHẬP LIỆU
 c_in1, c_in2 = st.columns([2, 1])
 with c_in1: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
 with c_in2: ky_now = st.number_input("Kỳ Quay:", value=int(db["ky_quay"]), step=1)
@@ -97,12 +106,11 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary", use_container_widt
 
 st.divider()
 
-# CÀI ĐẶT DÀN (LƯU TRẠNG THÁI)
+# CÀI ĐẶT DÀN
 is_ai = st.toggle("🤖 AI Tự Điều Chỉnh", key="ai_auto_w", value=True)
 df_res, w_active = calculate_master(is_ai)
 
 col_n1, col_n2 = st.columns(2)
-# Dùng session_state trực tiếp vào Widget để giữ giá trị
 st.session_state.num1 = col_n1.number_input("Số quân Dàn 1:", 1, 90, st.session_state.num1)
 st.session_state.num2 = col_n2.number_input("Số quân Dàn 2:", 1, 90, st.session_state.num2)
 
@@ -110,16 +118,12 @@ ds_sorted = df_res.sort_values("TOTAL")["SO"].tolist()
 d1_final = ", ".join(ds_sorted[:st.session_state.num1])
 d2_final = ", ".join(ds_sorted[:st.session_state.num2])
 
-# HIỂN THỊ VÀ COPY
 st.markdown(f"**Dàn 1 ({st.session_state.num1} số):**")
 st.markdown(f"<div class='dan-box dan-1'>{d1_final}</div>", unsafe_allow_html=True)
-st.copy_to_clipboard(d1_final, before_text="📋 Copy Dàn 1")
 
 st.markdown(f"**Dàn 2 ({st.session_state.num2} số):**")
 st.markdown(f"<div class='dan-box dan-2'>{d2_final}</div>", unsafe_allow_html=True)
-st.copy_to_clipboard(d2_final, before_text="📋 Copy Dàn 2")
 
-# NHẬT KÝ NHANH
 with st.expander("📊 Xem 10 kỳ gần nhất"):
     if db["history"]:
         st.table(pd.DataFrame(db["history"]).head(10))
