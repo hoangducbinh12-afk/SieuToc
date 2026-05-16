@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG MOBILE ULTRA ---
-st.set_page_config(page_title="TUAN PHONG V19.1", layout="centered")
+st.set_page_config(page_title="TUAN PHONG V19.2", layout="centered")
 
 st.markdown("""
     <style>
@@ -13,23 +13,41 @@ st.markdown("""
         background-color: white; border-radius: 10px; padding: 10px; 
         border: 1px solid #d1d5db; margin-bottom: 8px; 
         font-family: 'JetBrains Mono', monospace; font-weight: 700; 
-        color: #1e293b; font-size: 0.95rem; line-height: 1.6; text-align: center; 
+        color: #1e293b; font-size: 0.92rem; line-height: 1.6; text-align: center; 
     }
     .dan-1 { border-left: 5px solid #10b981; background-color: #f0fdf4; }
     .dan-2 { border-left: 5px solid #3b82f6; background-color: #eff6ff; }
     
-    /* Tối ưu bảng Nhật ký căn giữa & thu nhỏ */
+    /* Tối ưu bảng Nhật ký & 50/50 căn giữa & thu nhỏ */
     .stTable td, .stTable th { 
-        font-size: 0.72rem !important; padding: 2px !important; 
+        font-size: 0.7rem !important; padding: 2px !important; 
         text-align: center !important; white-space: nowrap;
     }
     .stButton button { border-radius: 8px; height: 2.8rem; font-weight: bold; width: 100%; }
+    div[data-testid="stMetricValue"] { font-size: 1.1rem !important; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIC HÀM ---
+# --- 2. LOGIC HÀM & 8 BIẾN 50/50 ---
 B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
 B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
+SO_THUONG = [2,3,4,6,8,13,15,17,18,19,20,24,25,26,28,30,31,35,37,39,40,42,46,47,48,51,52,53,57,59,60,62,64,68,69,71,73,74,75,79,80,81,82,84,86,91,93,95,96,97]
+
+def get_5050_attrs(n_str):
+    try:
+        n = int(n_str)
+        d, u = n // 10, n % 10
+        return {
+            "D_C/L": "Chẵn" if d % 2 == 0 else "Lẻ",
+            "U_C/L": "Chẵn" if u % 2 == 0 else "Lẻ",
+            "T_C/L": "Chẵn" if (d+u)%2 == 0 else "Lẻ",
+            "D_T/B": "To" if d >= 5 else "Bé",
+            "U_T/B": "To" if u >= 5 else "Bé",
+            "T_T/B": "To" if (d+u)%10 >= 5 else "Bé",
+            "HỆ": "Thường" if n in SO_THUONG else "Kép",
+            "H_T/B": "To" if (d-u+10)%10 >= 5 else "Bé"
+        }
+    except: return {}
 
 def build_mt_120(g):
     g_str = str(g).strip()
@@ -86,22 +104,20 @@ def calculate_master(use_ai):
     return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":total, "R1":rk(e1), "R2":rk(e2), "R3":rk(e3, True), "R4":rk(e4)}), w_calc
 
 # --- 5. GIAO DIỆN ---
-st.markdown("<h3 style='text-align: center;'>🛡️ TUAN PHONG V19.1</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #1e3a8a;'>🛡️ TUAN PHONG V19.2</h3>", unsafe_allow_html=True)
 
-# HÀNG NHẬP LIỆU: NGÀY | GĐB | KỲ
+# NHẬP LIỆU
 c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
 with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
 with c_gdb: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
 with c_ky: ky_now = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
 
-if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
+if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary", use_container_width=True):
     if len(gdb_now) >= 5:
         df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True))
         target = f"{int(gdb_now[-2:]):02d}"
         db["history"].insert(0, {
-            "Ngày": day_in,
-            "Kỳ": int(ky_now), 
-            "Số": target, 
+            "Ngày": day_in, "Kỳ": int(ky_now), "Số": target, 
             "R_AI": int(df_old[df_old['SO']==target].index[0]+1), 
             "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]),
             "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]),
@@ -119,10 +135,10 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
 st.divider()
 
 # TABS
-tab_dan, tab_setup, tab_log = st.tabs(["🎯 DÀN", "⚖️ AI", "📊 NHẬT KÝ"])
+tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚖️ FILE/AI"])
 
 with tab_dan:
-    is_ai = st.toggle("🤖 AI Auto Mode", key="ai_auto_w", value=True)
+    is_ai = st.toggle("🤖 AI Auto Weight", key="ai_auto_w", value=True)
     df_res, w_active = calculate_master(is_ai)
     
     c_n1, c_n2 = st.columns(2)
@@ -135,18 +151,35 @@ with tab_dan:
     
     st.markdown(f"<div class='dan-box dan-1'>{d1_f}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='dan-box dan-2'>{d2_f}</div>", unsafe_allow_html=True)
-
-with tab_setup:
-    st.write(f"**E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%**")
-    st.divider()
-    st.download_button("💾 Lưu File", json.dumps(st.session_state.db), f"data_{datetime.now().strftime('%H%M')}.json", use_container_width=True)
-    up = st.file_uploader("Nạp File", type="json")
-    if up: 
-        st.session_state.db = json.load(up)
-        st.rerun()
+    
+    # THỐNG KÊ ĂN DÀN
+    if db["history"]:
+        st.markdown("---")
+        h = db["history"]
+        w59 = sum(1 for x in h if x.get("R_AI", 100) <= 59)
+        w70 = sum(1 for x in h if x.get("R_AI", 100) <= 70)
+        c_m1, c_m2 = st.columns(2)
+        c_m1.metric("Ăn Dàn 59", f"{w59}/{len(h)}", f"{round(w59/len(h)*100,1)}%")
+        c_m2.metric("Ăn Dàn 70", f"{w70}/{len(h)}", f"{round(w70/len(h)*100,1)}%")
 
 with tab_log:
     if db["history"]:
         df_h = pd.DataFrame(db["history"]).head(20)
-        # Hiển thị bảng nhật ký đầy đủ cột Ngày, Kỳ và các Rank
         st.table(df_h[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
+
+with tab_5050:
+    if db["history"]:
+        st.write("📝 **Trạng thái 8 biến 50/50 (10 kỳ gần nhất):**")
+        data_50 = [get_5050_attrs(x["Số"]) for x in db["history"][:10]]
+        df_50 = pd.DataFrame(data_50)
+        df_50.index = [x["Kỳ"] for x in db["history"][:10]]
+        st.table(df_50)
+
+with tab_setup:
+    st.write(f"📊 **AI %:** E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%")
+    st.divider()
+    st.download_button("💾 Lưu File .JSON", json.dumps(st.session_state.db), f"data_{datetime.now().strftime('%H%M')}.json", use_container_width=True)
+    up = st.file_uploader("Nạp File", type="json")
+    if up: 
+        st.session_state.db = json.load(up)
+        st.rerun()
