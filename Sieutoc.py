@@ -5,8 +5,8 @@ import json
 from datetime import datetime
 import scipy.stats as stats
 
-# --- 1. GIAO DIỆN CHUẨN MOBILE ---
-st.set_page_config(page_title="TUAN PHONG V14.2 ULTRA", layout="wide")
+# --- 1. GIAO DIỆN SÁNG CHUẨN MOBILE ---
+st.set_page_config(page_title="TUAN PHONG V14.3 ULTRA", layout="wide")
 st.markdown("""
     <style>
     .main-box { 
@@ -40,8 +40,9 @@ def get_root_val(s):
     except: return 1
 
 def build_ma_tran_120(gdb_str):
-    if not gdb_str or len(str(gdb_str)) < 5: return [0]*120
-    digits = [int(d) for d in str(gdb_str)[-5:]]
+    g_str = str(gdb_str).strip()
+    if not g_str or len(g_str) < 5: return []
+    digits = [int(d) for d in g_str[-5:]]
     tien = [[(d + step) % 10 for d in digits] for step in range(10)]
     bong = [digits]; current = digits
     for i in range(9):
@@ -70,66 +71,64 @@ if 'multi_db' not in st.session_state:
 if 'current_station' not in st.session_state:
     st.session_state.current_station = "MB"
 
-# --- ENGINE TÍNH TOÁN V14.2 (FIX ENGINE 3) ---
-def get_rank_array_v142(scores, reverse=False):
+# --- ENGINE TÍNH TOÁN V14.3 (FIX INDEXERROR) ---
+def get_rank_array_v143(scores, reverse=False):
     return stats.rankdata(scores if not reverse else -scores, method='min')
 
-def calculate_master_v142(st_name, date_str):
+def calculate_master_v143(st_name, date_str):
     st_db = st.session_state.multi_db[st_name]
     last_gdb = st_db["last_gdb_full"]
-    curr_n = int(last_gdb[-2:]) if len(last_gdb)>=2 else 0
+    curr_n = int(last_gdb[-2:]) if len(str(last_gdb))>=2 else 0
     
     e1_raw, e2_raw, e3_raw, e4_raw = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
     ma_tran_120 = build_ma_tran_120(last_gdb)
     
-    # Chuẩn bị ma trận tịnh tiến Engine 3
-    pts_b = st_db["bang_b_points"]
-    list_e3 = []
-    for n in range(10):
-        d_p, u_p, t_p, h_p, c_p = 0, 0, 0, 0, 0
-        for idx in range(120):
-            if ma_tran_120[idx] == n:
-                d_p += pts_b[idx]["dau"]; u_p += pts_b[idx]["duoi"]
-                t_p += pts_b[idx]["tong"]; h_p += pts_b[idx]["hieu"]
-                c_p += pts_b[idx]["cham"]
-        list_e3.append({"d":d_p, "u":u_p, "t":t_p, "h":h_p, "c":c_p})
+    # FIX INDEXERROR: Chỉ tính E3 khi ma trận đủ 120 tọa độ
+    list_e3 = [{"d":0,"u":0,"t":0,"h":0,"c":0} for _ in range(10)]
+    if len(ma_tran_120) == 120:
+        pts_b = st_db["bang_b_points"]
+        for n in range(10):
+            d_p, u_p, t_p, h_p, c_p = 0, 0, 0, 0, 0
+            for idx in range(120):
+                if ma_tran_120[idx] == n:
+                    d_p += pts_b[idx]["dau"]; u_p += pts_b[idx]["duoi"]
+                    t_p += pts_b[idx]["tong"]; h_p += pts_b[idx]["hieu"]
+                    c_p += pts_b[idx]["cham"]
+            list_e3[n] = {"d":d_p, "u":u_p, "t":t_p, "h":h_p, "c":c_p}
 
-    # Tra cứu phản xạ Engine 4
     d_k, u_k = str(curr_n//10), str(curr_n%10)
     t_k, h_k = str((curr_n//10 + curr_n%10)%10), str((curr_n//10 - curr_n%10 + 10)%10)
     b_k = str(next((i for i, (k, v) in enumerate(BO_MAP.items()) if curr_n in v), 0))
 
     for i in range(100):
         d, u, t, h = i//10, i%10, (i//10+i%10)%10, (i//10-i%10+10)%10
-        # E1: Khan
         e1_raw[i] = st_db["dau"][d] + st_db["duoi"][u] + st_db["tong"][t] + st_db["hieu"][h] + st_db["cham"][d] + st_db["cham"][u]
-        # E2: Root
         if st_db["use_root"]:
             for r_val in [get_root_val(date_str), get_root_val(str(st_db["ky_quay"]))]:
                 if r_val in ROOT_DATA: e2_raw[i] += ROOT_DATA[r_val]["dau"].index(d) + ROOT_DATA[r_val]["duoi"].index(u)
-        # E3: Tịnh Tiến (Đã fix logic nạp điểm)
+        
         e3_raw[i] = list_e3[d]["d"] + list_e3[u]["u"] + list_e3[t]["t"] + list_e3[h]["h"] + list_e3[d]["c"] + list_e3[u]["c"]
-        # E4: Phản xạ 5 nhánh
+        
         for m_name, k in [("ref_dau",d_k), ("ref_duoi",u_k), ("ref_tong",t_k), ("ref_hieu",h_k), ("ref_bo",b_k)]:
-            m = st_db[m_name].get(k, {})
-            if m: e4_raw[i] += m["dau"][d] + m["duoi"][u] + m["tong"][t]
+            if k in st_db.get(m_name, {}):
+                m = st_db[m_name][k]
+                e4_raw[i] += m["dau"][d] + m["duoi"][u] + m["tong"][t]
 
-    r1, r2 = get_rank_array_v142(e1_raw, False), get_rank_array_v142(e2_raw, False)
-    r3, r4 = get_rank_array_v142(e3_raw, True), get_rank_array_v142(e4_raw, True)
+    r1, r2 = get_rank_array_v143(e1_raw, False), get_rank_array_v143(e2_raw, False)
+    r3, r4 = get_rank_array_v143(e3_raw, True), get_rank_array_v143(e4_raw, True)
     df = pd.DataFrame({"SO": [f"{k:02d}" for k in range(100)], "R1":r1, "R2":r2, "R3":r3, "R4":r4})
     w = st_db["weights"]
     df["DIEM_TONG"] = (df["R1"]*w[0] + df["R2"]*w[1] + df["R3"]*w[2] + df["R4"]*w[3]) / 100
     return df
 
-def process_v142():
+def process_v143():
     st_name = st.session_state.current_station
     st_db = st.session_state.multi_db[st_name]
     raw = st.session_state.gdb_in.strip()
     if len(raw)<5: return
     n = int(raw[-2:]); target = f"{n:02d}"
-    df_old = calculate_master_v142(st_name, st.session_state.date_in)
+    df_old = calculate_master_v143(st_name, st.session_state.date_in)
     
-    # Lưu Rank thực tế
     st_db["history"].insert(0, {
         "Kỳ": int(st_db["ky_quay"]), "GĐB": raw, "Số": target,
         "Rank_AI": int(stats.rankdata(df_old["DIEM_TONG"], method='min')[df_old[df_old['SO']==target].index[0]]),
@@ -139,21 +138,19 @@ def process_v142():
         "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])
     })
     
-    # Nuôi điểm ngày mới
     dv, duv, tv, hv = n//10, n%10, (n//10+n%10)%10, (n//10-n%10+10)%10
     for i in range(10):
         for k, v in [("dau",dv),("duoi",duv),("tong",tv),("hieu",hv)]: st_db[k][i] = 0 if i==v else st_db[k][i]+1
         st_db["cham"][i] = 0 if (i==dv or i==duv) else st_db["cham"][i]+1
     
-    # Nuôi phản xạ 5 nhánh
     if len(st_db["history"]) >= 2:
         c_num = int(st_db["history"][1]["Số"]); n_num = int(st_db["history"][0]["Số"])
-        dk, uk, tk, hk, bk = str(c_num//10), str(c_num%10), str((c_num//10+c_num%10)%10), str((c_num//10-c_num%10+10)%10), str(next((i for i, (k, v) in enumerate(BO_MAP.items()) if c_num in v), 0))
+        dk, uk, tk, hk = str(c_num//10), str(c_num%10), str((c_num//10+c_num%10)%10), str((c_num//10-c_num%10+10)%10)
+        bk = str(next((i for i, (k, v) in enumerate(BO_MAP.items()) if c_num in v), 0))
         dn, un, tn = n_num//10, n_num%10, (n_num//10+n_num%10)%10
         for m_name, k in [("ref_dau",dk), ("ref_duoi",uk), ("ref_tong",tk), ("ref_hieu",hk), ("ref_bo",bk)]:
-            st_db[m_name][k]["dau"][dn]+=1; st_db[m_name][k]["duoi"][un]+=1; st_db[m_name][k]["tong"][tn]+=1
+            if k in st_db[m_name]: st_db[m_name][k]["dau"][dn]+=1; st_db[m_name][k]["duoi"][un]+=1; st_db[m_name][k]["tong"][tn]+=1
 
-    # Nuôi ma trận 120 (Engine 3)
     ma_tran_prev = build_ma_tran_120(st_db["last_gdb_full"])
     if len(ma_tran_prev) == 120:
         for idx in range(120):
@@ -164,7 +161,7 @@ def process_v142():
     st_db["last_gdb_full"], st_db["ky_quay"] = raw, st_db["ky_quay"]+1
 
 # --- 4. GIAO DIỆN ---
-st.title("🛡️ COMMANDER ULTRA V14.2")
+st.title("🛡️ COMMANDER ULTRA V14.3")
 with st.sidebar:
     st.session_state.current_station = st.selectbox("ĐÀI SOI:", list(st.session_state.multi_db.keys()))
     if st.button("🔴 RESET"): st.session_state.clear(); st.rerun()
@@ -177,19 +174,18 @@ with c1: st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"], key="gdb_in"
 with c2: st.text_input("Ngày:", value=datetime.now().strftime("%d%m%Y"), key="date_in")
 with c3: db["ky_quay"] = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
 
-st.button("🚀 CẬP NHẬT HỆ THỐNG", on_click=process_v142, type="primary", use_container_width=True)
+st.button("🚀 CẬP NHẬT HỆ THỐNG", on_click=process_v143, type="primary", use_container_width=True)
 
-df_m = calculate_master_v142(st.session_state.current_station, st.session_state.date_in)
+df_m = calculate_master_v143(st.session_state.current_station, st.session_state.date_in)
 
 t1, t2, t3 = st.tabs(["🎯 DÀN AI", "📊 ĐỐI TRỌNG", "📋 NHẬT KÝ"])
 with t1:
-    n1 = st.number_input("Dàn mỏng:", 1, 100, 36, step=1)
+    n1 = st.number_input("Số quân:", 1, 100, 51, step=1)
     danh_sach = df_m.sort_values("DIEM_TONG")["SO"].tolist()
     st.markdown(f"<div class='main-box'>{' '.join(danh_sach[:n1])}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='main-box' style='border-color:#10b981'>{' '.join(danh_sach[:51])}</div>", unsafe_allow_html=True)
 with t2:
-    st.table(pd.DataFrame({"Bộ máy": ["E1", "E2", "E3", "E4"], "Tỷ trọng (%)": [round(x,1) for x in db["weights"]]}).set_index("Bộ máy").T)
-    st.download_button("💾 LƯU DỮ LIỆU", json.dumps(st.session_state.multi_db), "DATA_V142.json", use_container_width=True)
+    st.table(pd.DataFrame({"Engine": ["E1", "E2", "E3", "E4"], "Tỷ trọng (%)": [round(x,1) for x in db["weights"]]}).set_index("Engine").T)
+    st.download_button("💾 LƯU DỮ LIỆU", json.dumps(st.session_state.multi_db), "DATA_V143.json", use_container_width=True)
 with t3:
     if db["history"]:
         df_h = pd.DataFrame(db["history"])
