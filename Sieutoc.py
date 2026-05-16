@@ -80,7 +80,6 @@ def create_blank_station():
         "bang_b_points": [{"dau":1,"duoi":1,"tong":1,"hieu":1,"cham":1} for _ in range(120)],
         "last_gdb_full": "00000", "ky_quay": 1, "history": [], "use_root": True,
         "weights": [25.0, 25.0, 25.0, 25.0],
-        # MA TRẬN PHẢN XẠ NÂNG CẤP SIÊU NHẠY V13.0
         "ref_dau": {str(i): {"dau":[0]*10,"duoi":[0]*10,"tong":[0]*10,"hieu":[0]*10,"bo":[0]*15} for i in range(10)},
         "ref_duoi": {str(i): {"dau":[0]*10,"duoi":[0]*10,"tong":[0]*10,"hieu":[0]*10,"bo":[0]*15} for i in range(10)},
         "ref_tong": {str(i): {"dau":[0]*10,"duoi":[0]*10,"tong":[0]*10,"hieu":[0]*10,"bo":[0]*15} for i in range(10)},
@@ -97,7 +96,6 @@ if 'multi_db' not in st.session_state:
 if 'current_station' not in st.session_state:
     st.session_state.current_station = "MB"
 
-# --- BỘ NÃO PHẢN XẠ SỐ MA TRẬN 5 NHÁNH SIÊU NHẠY ---
 def rebuild_reflex_memory_v130(st_name):
     st_db = st.session_state.multi_db[st_name]
     blank = create_blank_station()
@@ -114,17 +112,14 @@ def rebuild_reflex_memory_v130(st_name):
         curr_num = int(hist_reversed[k]["Số"])
         next_num = int(hist_reversed[k+1]["Số"])
         
-        # Thuộc tính số hiện tại (Kỳ trước)
         d_c, u_c = str(curr_num // 10), str(curr_num % 10)
         t_c, h_c = str((curr_num//10 + curr_num%10)%10), str((curr_num//10 - curr_num%10 + 10)%10)
         b_c = str(get_bo_idx(curr_num))
         
-        # Thuộc tính số kỳ sau (Kết quả phản xạ)
         d_n, u_n = next_num // 10, next_num % 10
         t_n, h_n = (next_num//10 + next_num%10)%10, (next_num//10 - next_num%10 + 10)%10
         b_n = get_bo_idx(next_num)
         
-        # Đồng loạt cộng tần suất tích lũy cho cả 5 nhánh phản xạ thuộc tính
         for key_c, target_matrix in [
             (d_c, "ref_dau"), (u_c, "ref_duoi"), 
             (t_c, "ref_tong"), (h_c, "ref_hieu"), (b_c, "ref_bo")
@@ -148,15 +143,18 @@ def update_ai_weights_v130(st_name):
     total = sum(new_w) if sum(new_w) > 0 else 100
     return [(x / total) * 100 for x in new_w]
 
+def find_rank_unique_v130(df, target, col, asc=True):
+    temp = df[['SO', col]].sort_values(by=[col, 'SO'], ascending=[asc, True]).reset_index(drop=True)
+    match = temp[temp['SO'] == target].index
+    return int(match[0]) + 1 if len(match) > 0 else 50
+
 def calculate_master_v130(st_name):
     st_db = st.session_state.multi_db[st_name]
     last_gdb = st_db["last_gdb_full"]
     curr_n = int(last_gdb[-2:]) if len(last_gdb) >= 2 else 0
     
-    # Ép buộc làm mới ma trận phản xạ 5 nhánh thời gian thực
     rebuild_reflex_memory_v130(st_name)
     
-    # Lấy key chu kỳ thuộc tính của số nền hiện tại
     d_key, u_key = str(curr_n // 10), str(curr_n % 10)
     t_key, h_key = str((curr_n//10 + curr_n%10)%10), str((curr_n//10 - curr_n%10 + 10)%10)
     b_key = str(get_bo_idx(curr_n))
@@ -184,7 +182,6 @@ def calculate_master_v130(st_name):
         t, h = (d + u) % 10, (d - u + 10) % 10
         b_idx = get_bo_idx(i)
         
-        # E1: Khan Thuộc Tính
         e1[i] = st_db["dau"][d] + st_db["duoi"][u] + st_db["tong"][t] + st_db["hieu"][h] + \
                 ((st_db["cham"][d]*2) if d==u else (st_db["cham"][d]+st_db["cham"][u])) + \
                 st_db["bo"][b_idx] + st_db["giap"][find_idx_universal(i, GIAP_12)] + \
@@ -194,7 +191,6 @@ def calculate_master_v130(st_name):
                 st_db["t_tb"][1 if t>=5 else 0] + st_db["h_tb"][1 if h>=5 else 0] + \
                 st_db["so_he"][1 if i not in SO_THUONG else 0]
         
-        # E2: Điểm Root
         sr = 0
         if st_db["use_root"]:
             for r in [n_date, n_ky, n_gdb]:
@@ -203,41 +199,35 @@ def calculate_master_v130(st_name):
                           ROOT_DATA[r]["tong"].index(t) + ROOT_DATA[r]["hieu"].index(h)
         e2[i] = sr
         
-        # E3: Tịnh Tiến Bóng
         if len(list_c_tmp) == 10:
             e3[i] = list_c_tmp[d]["da"] + list_c_tmp[u]["du"] + list_c_tmp[t]["to"] + list_c_tmp[h]["hi"]
             e3[i] += (list_c_tmp[d]["ch"] * 2) if d == u else (list_c_tmp[d]["ch"] + list_c_tmp[u]["ch"])
             
-        # --- ENGINE 4 THẾ HỆ MỚI: TỔNG HỢP PHẢN XẠ 5 NHÁNH SUY LUẬN ---
         score_e4 = 0
-        # Nhánh 1: Đầu
         if d_key in st_db["ref_dau"]:
             m = st_db["ref_dau"][d_key]
             score_e4 += m["dau"][d] + m["duoi"][u] + m["tong"][t] + m["hieu"][h] + m["bo"][b_idx]
-        # Nhánh 2: Đuôi
         if u_key in st_db["ref_duoi"]:
             m = st_db["ref_duoi"][u_key]
             score_e4 += m["dau"][d] + m["duoi"][u] + m["tong"][t] + m["hieu"][h] + m["bo"][b_idx]
-        # Nhánh 3: Tổng
         if t_key in st_db["ref_tong"]:
             m = st_db["ref_tong"][t_key]
             score_e4 += m["dau"][d] + m["duoi"][u] + m["tong"][t] + m["hieu"][h] + m["bo"][b_idx]
-        # Nhánh 4: Hiệu
         if h_key in st_db["ref_hieu"]:
             m = st_db["ref_hieu"][h_key]
             score_e4 += m["dau"][d] + m["duoi"][u] + m["tong"][t] + m["hieu"][h] + m["bo"][b_idx]
-        # Nhánh 5: Bộ
         if b_key in st_db["ref_bo"]:
             m = st_db["ref_bo"][b_key]
             score_e4 += m["dau"][d] + m["duoi"][u] + m["tong"][t] + m["hieu"][h] + m["bo"][b_idx]
             
-        e4[i] = 2000 - (score_e4 * 10)  # Điểm phạt giảm mạnh cho số hay nổ đi kèm thuộc tính nền
+        e4[i] = 2000 - (score_e4 * 10)
 
     df = pd.DataFrame({"SO": [f"{k:02d}" for k in range(100)], "E1": e1, "E2": e2, "E3": e3, "E4": e4})
     w = st_db["weights"]
     df["DIEM_TONG"] = (df["E1"]*w[0] + df["E2"]*w[1] + df["E3"]*w[2] + df["E4"]*w[3]) / 4
     return df
 
+# --- FIX HOÀN TOÀN: Đồng bộ gọi chuẩn hàm find_rank_unique_v130 ---
 def process_multi_update():
     st_name = st.session_state.current_station
     st_db = st.session_state.multi_db[st_name]
@@ -297,14 +287,15 @@ def process_multi_update():
     st_db["last_gdb_full"] = raw
     st_db["ky_quay"] += 1
     rebuild_reflex_memory_v130(st_name)
-    st_db["weights"] = update_ai_weights_v130(st_name)
 
 # --- 6. GIAO DIỆN CHÍNH ---
 st.title("🛡️ COMMANDER PRO V13.0 - MULTI")
 
 with st.sidebar:
     st.header("🏢 KHU VỰC ĐÀI QUAY")
-    st.session_state.current_station = st.selectbox("CHỌN ĐÀI SOI:", list(st.session_state.multi_db.keys()), key="station_select")
+    st.session_state.current_station = st.selectbox(
+        "CHỌN ĐÀI SOI:", list(st.session_state.multi_db.keys()), key="station_select"
+    )
     new_st = st.text_input("➕ Kích hoạt đài mới:")
     if st.button("TẠO ĐÀI MỚI") and new_st:
         new_st_clean = new_st.strip().upper()
