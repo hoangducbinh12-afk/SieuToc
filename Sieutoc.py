@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG MOBILE ULTRA ---
-st.set_page_config(page_title="TUAN PHONG V20.1", layout="centered")
+st.set_page_config(page_title="TUAN PHONG V21.0", layout="centered")
 
 st.markdown("""
     <style>
@@ -32,14 +32,10 @@ def get_5050_attrs(n_str):
         n = int(n_str)
         d, u = n // 10, n % 10
         return {
-            "D_C/L": "Chẵn" if d % 2 == 0 else "Lẻ",
-            "U_C/L": "Chẵn" if u % 2 == 0 else "Lẻ",
-            "T_C/L": "Chẵn" if (d+u)%2 == 0 else "Lẻ",
-            "D_T/B": "To" if d >= 5 else "Bé",
-            "U_T/B": "To" if u >= 5 else "Bé",
-            "T_T/B": "To" if (d+u)%10 >= 5 else "Bé",
-            "HỆ": "Thường" if n in SO_THUONG else "Kép",
-            "H_T/B": "To" if (d-u+10)%10 >= 5 else "Bé"
+            "D_C/L": "Chẵn" if d % 2 == 0 else "Lẻ", "U_C/L": "Chẵn" if u % 2 == 0 else "Lẻ",
+            "T_C/L": "Chẵn" if (d+u)%2 == 0 else "Lẻ", "D_T/B": "To" if d >= 5 else "Bé",
+            "U_T/B": "To" if u >= 5 else "Bé", "T_T/B": "To" if (d+u)%10 >= 5 else "Bé",
+            "HỆ": "Thường" if n in SO_THUONG else "Kép", "H_T/B": "To" if (d-u+10)%10 >= 5 else "Bé"
         }
     except: return {}
 
@@ -57,8 +53,8 @@ def stats_rank(arr, rev=False):
     vals = np.array(arr)
     return np.argsort(np.argsort(-vals if rev else vals)) + 1
 
-# --- 3. ENGINE MASTER V20.1 ---
-def calculate_master(use_ai, use_elite):
+# --- 3. ENGINE MASTER V21.0 ---
+def calculate_master(use_ai, use_elite, use_extreme):
     db = st.session_state.db
     last_g = db.get("last_gdb_full", "00000")
     prev_n = int(db["history"][0]["Số"]) if db["history"] else -1
@@ -77,14 +73,22 @@ def calculate_master(use_ai, use_elite):
         if dk in db["ref_dau"]: e4[i] += db["ref_dau"][dk]["d"][d]
         if uk in db["ref_duoi"]: e4[i] += db["ref_duoi"][uk]["u"][u]
         
+    r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
+
+    for i in range(100):
+        # 1. ELITE FILTER (0-1-8)
         if use_elite and prev_attrs:
             curr_at = get_5050_attrs(i)
             bets = sum(1 for k in prev_attrs if prev_attrs[k] == curr_at[k])
-            if bets <= 1: penalty[i] = 200
-            elif bets == 8 and i != prev_n: penalty[i] = 200
+            if bets <= 1: penalty[i] += 150
+            elif bets == 8 and i != prev_n: penalty[i] += 150
+        
+        # 2. EXTREME FILTER (1-10 & 90-100)
+        if use_extreme:
+            for r in [r1[i], r2[i], r3[i], r4[i]]:
+                if 1 <= r <= 10 or 90 <= r <= 100:
+                    penalty[i] += 25 # Phạt nhẹ tích lũy cho mỗi Engine dính lưỡng cực
 
-    r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
-    
     if use_ai and len(db["history"]) >= 3:
         sc = [np.mean([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) / (np.std([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) or 1) for j in range(4)]
         w = [round((s/sum(sc))*100, 1) for s in sc]
@@ -92,35 +96,34 @@ def calculate_master(use_ai, use_elite):
     
     raw_ai = (r1*w[0] + r2*w[1] + r3*w[2] + r4*w[3]) / 100 + penalty
     avg_rk = (r1 + r2 + r3 + r4) / 4
-    final_score = np.where(raw_ai > avg_rk, avg_rk + penalty, raw_ai)
+    # Đảm bảo rào chắn: Rank_AI không vượt TBC, TRỪ KHI dính Penalty
+    final_score = np.where(raw_ai > (avg_rk + penalty), avg_rk + penalty, raw_ai)
     
     return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":final_score, "R1":r1, "R2":r2, "R3":r3, "R4":r4}), w
 
-# --- 4. KHỞI TẠO ---
+# --- 4. KHỞI TẠO & GIAO DIỆN ---
 DEFAULT_DB = {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[], "bang_b_points":[{"dau":1} for _ in range(120)], "ref_dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "ref_duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "weights":[25.0]*4}
 if 'db' not in st.session_state: st.session_state.db = DEFAULT_DB.copy()
 db = st.session_state.db
 
-st.markdown("<h3 style='text-align: center;'>🛡️ TUAN PHONG V20.1 MASTER</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center;'>🛡️ TUAN PHONG V21.0 ELITE PRO</h3>", unsafe_allow_html=True)
 
 c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
 with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
 with c_gdb: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
-with c_ky: ky_now = st.number_input("Kỳ Quay:", value=int(db["ky_quay"]), step=1)
+with c_ky: ky_now = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
 
 if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
     if len(gdb_now) >= 5:
-        df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True), st.session_state.get('elite_f', True))
+        df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True), st.session_state.get('elite_f', True), st.session_state.get('ext_f', True))
         target = f"{int(gdb_now[-2:]):02d}"
         db["history"].insert(0, {"Ngày": day_in, "Kỳ": int(ky_now), "Số": target, "R_AI": int(stats_rank(df_old["TOTAL"])[df_old[df_old['SO']==target].index[0]]), "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]), "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]), "Rank_E3": int(df_old.loc[df_old['SO']==target, 'R3'].values[0]), "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])})
+        # Cập nhật điểm khan...
         dv, du, tv = int(target)//10, int(target)%10, (int(target)//10+int(target)%10)%10
         for i in range(10):
             db["dau"][i] = 0 if i==dv else db["dau"][i]+1
             db["duoi"][i] = 0 if i==du else db["duoi"][i]+1
             db["tong"][i] = 0 if i==tv else db["tong"][i]+1
-        prev_n = db["history"][1]["Số"] if len(db["history"])>1 else "00"
-        db["ref_dau"][str(int(prev_n)//10)]["d"][dv] += 1
-        db["ref_duoi"][str(int(prev_n)%10)]["u"][du] += 1
         db["last_gdb_full"], db["ky_quay"] = gdb_now, ky_now + 1
         st.rerun()
 
@@ -128,10 +131,12 @@ st.divider()
 tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚙️ CÀI ĐẶT"])
 
 with tab_dan:
-    c_s1, c_s2 = st.columns(2)
+    c_s1, c_s2, c_s3 = st.columns(3)
     with c_s1: is_ai = st.toggle("🤖 AI Weight", key="ai_auto_w", value=True)
     with c_s2: is_elite = st.toggle("💎 Elite Filter", key="elite_f", value=True)
-    df_res, w_active = calculate_master(is_ai, is_elite)
+    with c_s3: is_ext = st.toggle("⚠️ Extreme", key="ext_f", value=True)
+    
+    df_res, w_active = calculate_master(is_ai, is_elite, is_ext)
     c_n1, c_n2 = st.columns(2)
     st.session_state.num1 = c_n1.number_input("Dàn 1:", 1, 90, st.session_state.get('num1', 11))
     st.session_state.num2 = c_n2.number_input("Dàn 2:", 1, 90, st.session_state.get('num2', 37))
@@ -147,7 +152,6 @@ with tab_log:
 
 with tab_5050:
     if db["history"]:
-        st.write("📊 **Nhịp 8 biến 50/50 (15 kỳ):**")
         df_50 = pd.DataFrame([get_5050_attrs(x["Số"]) for x in db["history"][:15]])
         df_50.index = [x["Kỳ"] for x in db["history"][:15]]
         st.table(df_50)
