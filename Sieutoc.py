@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG MOBILE ULTRA ---
-st.set_page_config(page_title="TUAN PHONG V21.1", layout="centered")
+st.set_page_config(page_title="TUAN PHONG V21.2", layout="centered")
 
 st.markdown("""
     <style>
@@ -53,7 +53,7 @@ def stats_rank(arr, rev=False):
     vals = np.array(arr)
     return np.argsort(np.argsort(-vals if rev else vals)) + 1
 
-# --- 3. ENGINE MASTER V21.1 ---
+# --- 3. ENGINE MASTER V21.2 ---
 def calculate_master(use_ai, use_elite, use_extreme, use_balance):
     db = st.session_state.db
     last_g = db.get("last_gdb_full", "00000")
@@ -76,22 +76,22 @@ def calculate_master(use_ai, use_elite, use_extreme, use_balance):
     r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
 
     for i in range(100):
-        # 1. ELITE FILTER
+        # 1. ELITE FILTER (0-1-8)
         if use_elite and prev_attrs:
             curr_at = get_5050_attrs(i)
             bets = sum(1 for k in prev_attrs if prev_attrs[k] == curr_at[k])
             if bets <= 1 or (bets == 8 and i != prev_n): penalty[i] += 150
         
-        # 2. EXTREME FILTER
+        # 2. EXTREME FILTER (1-10 & 90-100)
         if use_extreme:
             for r in [r1[i], r2[i], r3[i], r4[i]]:
                 if 1 <= r <= 10 or 90 <= r <= 100: penalty[i] += 25
         
-        # 3. BALANCE FILTER (NEW: Đồng nhất 1-50 hoặc 51-100)
+        # 3. BALANCE FILTER (Đồng nhất 1-50 hoặc 51-100)
         if use_balance:
             ranks = [r1[i], r2[i], r3[i], r4[i]]
             if all(1 <= r <= 50 for r in ranks) or all(51 <= r <= 100 for r in ranks):
-                penalty[i] += 40 # Phạt vì quá đồng nhất, thiếu sự đột biến
+                penalty[i] += 40
 
     if use_ai and len(db["history"]) >= 3:
         sc = [np.mean([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) / (np.std([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) or 1) for j in range(4)]
@@ -109,7 +109,7 @@ DEFAULT_DB = {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000
 if 'db' not in st.session_state: st.session_state.db = DEFAULT_DB.copy()
 db = st.session_state.db
 
-st.markdown("<h3 style='text-align: center;'>🛡️ TUAN PHONG V21.1 MASTER</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #1e3a8a;'>🛡️ TUAN PHONG V21.2 MASTER</h3>", unsafe_allow_html=True)
 
 c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
 with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
@@ -130,7 +130,9 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
         st.rerun()
 
 st.divider()
-tab_dan, tab_log, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "⚙️ HỆ THỐNG"])
+
+# TABS HIỂN THỊ
+tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚙️ CÀI ĐẶT"])
 
 with tab_dan:
     c1, c2, c3, c4 = st.columns(4)
@@ -146,9 +148,19 @@ with tab_dan:
     ds = df_res.sort_values("TOTAL")["SO"].tolist()
     st.markdown(f"<div class='dan-box dan-1'>{', '.join(ds[:st.session_state.num1])}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='dan-box dan-2'>{', '.join(ds[:st.session_state.num2])}</div>", unsafe_allow_html=True)
+    if db["history"]:
+        win_59 = sum(1 for x in db["history"] if x.get("R_AI", 100) <= 59)
+        st.metric("Phong độ Dàn 59", f"{win_59}/{len(db['history'])}", f"{round(win_59/len(db['history'])*100, 1)}%")
 
 with tab_log:
     if db["history"]: st.table(pd.DataFrame(db["history"]).head(20)[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
+
+with tab_5050:
+    if db["history"]:
+        st.write("📝 **Nhịp 8 biến 50/50 (20 kỳ):**")
+        df_50 = pd.DataFrame([get_5050_attrs(x["Số"]) for x in db["history"][:20]])
+        df_50.index = [x["Kỳ"] for x in db["history"][:20]]
+        st.table(df_50)
 
 with tab_setup:
     st.write(f"📊 AI Weight: E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%")
