@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 # --- 1. CONFIG MOBILE ULTRA ---
-st.set_page_config(page_title="TUAN PHONG V21.2", layout="centered")
+st.set_page_config(page_title="TUAN PHONG V22.0", layout="centered")
 
 st.markdown("""
     <style>
@@ -19,6 +19,7 @@ st.markdown("""
     .dan-2 { border-left: 5px solid #3b82f6; background-color: #eff6ff; }
     .stTable td, .stTable th { font-size: 0.7rem !important; padding: 2px !important; text-align: center !important; white-space: nowrap;}
     .stButton button { border-radius: 8px; height: 2.8rem; font-weight: bold; width: 100%; }
+    div[data-testid="stMetricValue"] { font-size: 1.1rem !important; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -53,8 +54,8 @@ def stats_rank(arr, rev=False):
     vals = np.array(arr)
     return np.argsort(np.argsort(-vals if rev else vals)) + 1
 
-# --- 3. ENGINE MASTER V21.2 ---
-def calculate_master(use_ai, use_elite, use_extreme, use_balance):
+# --- 3. ENGINE MASTER V22.0 ---
+def calculate_master(use_ai, use_elite, use_extreme, use_balance, use_consensus):
     db = st.session_state.db
     last_g = db.get("last_gdb_full", "00000")
     prev_n = int(db["history"][0]["Số"]) if db["history"] else -1
@@ -85,13 +86,16 @@ def calculate_master(use_ai, use_elite, use_extreme, use_balance):
         # 2. EXTREME FILTER (1-10 & 90-100)
         if use_extreme:
             for r in [r1[i], r2[i], r3[i], r4[i]]:
-                if 1 <= r <= 10 or 90 <= r <= 100: penalty[i] += 25
+                if 1 <= r <= 10 or 90 <= r <= 100: penalty[i] += 20
         
-        # 3. BALANCE FILTER (Đồng nhất 1-50 hoặc 51-100)
+        # 3. BALANCE & CONSENSUS FILTER
+        ranks = [r1[i], r2[i], r3[i], r4[i]]
         if use_balance:
-            ranks = [r1[i], r2[i], r3[i], r4[i]]
             if all(1 <= r <= 50 for r in ranks) or all(51 <= r <= 100 for r in ranks):
                 penalty[i] += 40
+        if use_consensus:
+            # Nếu 4 Rank quá sát nhau (Độ lệch chuẩn thấp) -> Dễ là số ảo
+            if np.std(ranks) < 15: penalty[i] += 30
 
     if use_ai and len(db["history"]) >= 3:
         sc = [np.mean([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) / (np.std([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:15]]) or 1) for j in range(4)]
@@ -109,8 +113,9 @@ DEFAULT_DB = {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000
 if 'db' not in st.session_state: st.session_state.db = DEFAULT_DB.copy()
 db = st.session_state.db
 
-st.markdown("<h3 style='text-align: center; color: #1e3a8a;'>🛡️ TUAN PHONG V21.2 MASTER</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #1e3a8a;'>🛡️ TUAN PHONG V22.0 MASTER</h3>", unsafe_allow_html=True)
 
+# Hàng nhập liệu chính
 c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
 with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
 with c_gdb: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
@@ -118,9 +123,10 @@ with c_ky: ky_now = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
 
 if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
     if len(gdb_now) >= 5:
-        df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True), st.session_state.get('elite_f', True), st.session_state.get('ext_f', True), st.session_state.get('bal_f', True))
+        df_old, _ = calculate_master(st.session_state.get('ai_auto_w', True), st.session_state.get('elite_f', True), st.session_state.get('ext_f', True), st.session_state.get('bal_f', True), st.session_state.get('con_f', True))
         target = f"{int(gdb_now[-2:]):02d}"
         db["history"].insert(0, {"Ngày": day_in, "Kỳ": int(ky_now), "Số": target, "R_AI": int(stats_rank(df_old["TOTAL"])[df_old[df_old['SO']==target].index[0]]), "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]), "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]), "Rank_E3": int(df_old.loc[df_old['SO']==target, 'R3'].values[0]), "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])})
+        # Cập nhật điểm gan
         dv, du, tv = int(target)//10, int(target)%10, (int(target)//10+int(target)%10)%10
         for i in range(10):
             db["dau"][i] = 0 if i==dv else db["dau"][i]+1
@@ -131,40 +137,49 @@ if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
 
 st.divider()
 
-# TABS HIỂN THỊ
-tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚙️ CÀI ĐẶT"])
+# TABS
+tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚙️ HỆ THỐNG"])
 
 with tab_dan:
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: is_ai = st.toggle("🤖 AI", key="ai_auto_w", value=True)
-    with c2: is_elite = st.toggle("💎 Elite", key="elite_f", value=True)
-    with c3: is_ext = st.toggle("⚠️ Extreme", key="ext_f", value=True)
-    with c4: is_bal = st.toggle("⚖️ Balance", key="bal_f", value=True)
+    # 5 Công tắc lọc chiến thuật
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1: st.toggle("🤖 AI", key="ai_auto_w", value=True)
+    with c2: st.toggle("💎 Elite", key="elite_f", value=True)
+    with c3: st.toggle("⚠️ Extreme", key="ext_f", value=True)
+    with c4: st.toggle("⚖️ Bal", key="bal_f", value=True)
+    with c5: st.toggle("📉 Con", key="con_f", value=True)
     
-    df_res, w_active = calculate_master(is_ai, is_elite, is_ext, is_bal)
+    df_res, w_active = calculate_master(st.session_state.ai_auto_w, st.session_state.elite_f, st.session_state.ext_f, st.session_state.bal_f, st.session_state.con_f)
+    
     c_n1, c_n2 = st.columns(2)
     st.session_state.num1 = c_n1.number_input("Dàn 1:", 1, 90, st.session_state.get('num1', 11))
-    st.session_state.num2 = c_n2.number_input("Dàn 2:", 1, 90, st.session_state.get('num2', 37))
+    st.session_state.num2 = c_n2.number_input("Dàn 2:", 1, 90, st.session_state.get('num2', 50)) # Mặc định 50 quân
+    
     ds = df_res.sort_values("TOTAL")["SO"].tolist()
     st.markdown(f"<div class='dan-box dan-1'>{', '.join(ds[:st.session_state.num1])}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='dan-box dan-2'>{', '.join(ds[:st.session_state.num2])}</div>", unsafe_allow_html=True)
+    
     if db["history"]:
-        win_59 = sum(1 for x in db["history"] if x.get("R_AI", 100) <= 59)
-        st.metric("Phong độ Dàn 59", f"{win_59}/{len(db['history'])}", f"{round(win_59/len(db['history'])*100, 1)}%")
+        h = db["history"]
+        w50 = sum(1 for x in h if x.get("R_AI", 100) <= 50)
+        w59 = sum(1 for x in h if x.get("R_AI", 100) <= 59)
+        cm1, cm2 = st.columns(2)
+        cm1.metric("Ăn Dàn 50", f"{w50}/{len(h)}", f"{round(w50/len(h)*100,1)}%")
+        cm2.metric("Ăn Dàn 59", f"{w59}/{len(h)}", f"{round(w59/len(h)*100,1)}%")
 
 with tab_log:
-    if db["history"]: st.table(pd.DataFrame(db["history"]).head(20)[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
+    if db["history"]:
+        st.table(pd.DataFrame(db["history"]).head(20)[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
 
 with tab_5050:
     if db["history"]:
-        st.write("📝 **Nhịp 8 biến 50/50 (20 kỳ):**")
         df_50 = pd.DataFrame([get_5050_attrs(x["Số"]) for x in db["history"][:20]])
         df_50.index = [x["Kỳ"] for x in db["history"][:20]]
         st.table(df_50)
 
 with tab_setup:
     st.write(f"📊 AI Weight: E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%")
-    if st.button("🔴 RESET ALL"): st.session_state.db = DEFAULT_DB.copy(); st.rerun()
+    if st.button("🔴 RESET ALL DATA"): st.session_state.db = DEFAULT_DB.copy(); st.rerun()
     st.download_button("💾 Lưu File .JSON", json.dumps(st.session_state.db), "data.json", use_container_width=True)
     up = st.file_uploader("Nạp File", type="json")
     if up: st.session_state.db = json.load(up); st.rerun()
