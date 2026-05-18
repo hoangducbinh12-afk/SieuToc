@@ -3,190 +3,161 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import datetime
+from itertools import combinations
 
-# --- 1. CONFIG MOBILE ULTRA ---
-st.set_page_config(page_title="TUAN PHONG V23.3", layout="centered")
-
+# --- 1. CONFIG ---
+st.set_page_config(page_title="8-BIT INFINITE V4.5", layout="wide")
 st.markdown("""
     <style>
-    .dan-box { 
-        background-color: white; border-radius: 10px; padding: 10px; 
-        border: 1px solid #d1d5db; margin-bottom: 8px; 
-        font-family: 'JetBrains Mono', monospace; font-weight: 700; 
-        color: #1e293b; font-size: 0.92rem; line-height: 1.6; text-align: center; 
-    }
-    .dan-1 { border-left: 5px solid #10b981; background-color: #f0fdf4; }
-    .dan-2 { border-left: 5px solid #3b82f6; background-color: #eff6ff; }
-    .stTable td, .stTable th { font-size: 0.7rem !important; padding: 2px !important; text-align: center !important; white-space: nowrap;}
-    .stButton button { border-radius: 8px; height: 2.8rem; font-weight: bold; width: 100%; }
-    div[data-testid="stMetricValue"] { font-size: 1.1rem !important; font-weight: bold; }
+    html, body, [class*="st-"] { font-size: 0.72rem !important; }
+    .dan-box { background-color: #ffffff; border: 2px solid #1e3a8a; border-radius: 10px; padding: 10px; font-family: monospace; font-weight: 700; color: #1e3a8a; text-align: center; font-size: 1rem; }
+    .stMetric { background: #1e293b; padding: 10px; border-radius: 8px; color: #00d9ff; }
+    .deep-scan-card { background: #0f172a; color: #32cd32; padding: 10px; border-left: 5px solid #32cd32; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. LOGIC HÀM CORE ---
-B_D = {0:5, 1:6, 2:7, 3:8, 4:9, 5:0, 6:1, 7:2, 8:3, 9:4}
-B_A = {0:7, 1:4, 2:9, 3:6, 4:1, 5:8, 6:3, 7:0, 8:5, 9:2}
+# --- 2. CORE LOGIC ---
 SO_THUONG = [2,3,4,6,8,13,15,17,18,19,20,24,25,26,28,30,31,35,37,39,40,42,46,47,48,51,52,53,57,59,60,62,64,68,69,71,73,74,75,79,80,81,82,84,86,91,93,95,96,97]
+BIT_LABELS = ["Đ.CL", "Đu.CL", "T.CL", "Đ.TB", "Đu.TB", "T.TB", "Hệ", "Hi.TB"]
 
-def get_5050_attrs(n):
-    d, u = n // 10, n % 10
-    return {"D_CL": "Chẵn" if d % 2 == 0 else "Lẻ", "U_CL": "Chẵn" if u % 2 == 0 else "Lẻ", "T_CL": "Chẵn" if (d+u)%2 == 0 else "Lẻ", "D_TB": "To" if d >= 5 else "Bé", "U_TB": "To" if u >= 5 else "Bé", "T_TB": "To" if (d+u)%10 >= 5 else "Bé", "HE": "Thường" if n in SO_THUONG else "Kép", "H_TB": "To" if (d-u+10)%10 >= 5 else "Bé"}
+def get_8bit(n):
+    try:
+        val = int(n); d, u = val // 10, val % 10
+        return [1 if d % 2 != 0 else 0, 1 if u % 2 != 0 else 0, 1 if (d+u) % 2 != 0 else 0,
+                1 if d >= 5 else 0, 1 if u >= 5 else 0, 1 if (d+u) % 10 >= 5 else 0,
+                1 if val in SO_THUONG else 0, 1 if (d-u+10) % 10 >= 5 else 0]
+    except: return [0]*8
 
-def build_mt_120(g):
-    g_str = str(g).strip()
-    if len(g_str) < 5: return [0]*120
-    dts = [int(x) for x in g_str[-5:]]
-    tien = [[(d + s) % 10 for d in dts] for s in range(10)]; bong = [dts]; c = dts
-    for i in range(14):
-        c = [B_D[x] for x in c] if i%2==0 else [B_A[x] for x in c]
-        bong.append(c)
-    return ([x for sub in tien for x in sub] + [x for sub in bong for x in sub])[:120]
-
-def stats_rank(arr, rev=False):
-    vals = np.array(arr)
-    return np.argsort(np.argsort(-vals if rev else vals)) + 1
-
-# --- 3. ENGINE MASTER V23.3 (BỔ SUNG QUÉT VÙNG CHẾT) ---
-def calculate_master(use_ai, use_elite, use_ext, use_bal, use_con, use_clu, use_saf):
-    db = st.session_state.db
-    last_g = db.get("last_gdb_full", "00000")
-    prev_n = int(db["history"][0]["Số"]) if db["history"] else -1
-    prev_attrs = get_5050_attrs(prev_n) if prev_n != -1 else {}
+# --- 3. MÁY QUÉT VÔ CỰC (INFINITE SCAN) ---
+def infinite_deep_scan(history, last_n):
+    if len(history) < 2: return [0.5]*8, []
     
-    e1, e2, e3, e4, penalty = np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100), np.zeros(100)
-    mt = build_mt_120(last_g)
-    v_e3 = [sum(db.get("bang_b_points", [{"dau":1}]*120)[idx].get("dau", 1) for idx, v in enumerate(mt) if v == n) for n in range(10)]
-    dk, uk = last_g[-2:-1] if len(last_g)>=2 else "0", last_g[-1:] if len(last_g)>=1 else "0"
+    current_bits = get_8bit(last_n)
+    all_history_bits = [get_8bit(h["Số"]) for h in history][::-1]
+    
+    final_probs = np.array([0.0] * 8)
+    total_weight = 0.0
+    insights = []
 
+    # Cấu hình các tầng quét (Số bit cố định, Số kỳ quét, Trọng số)
+    layers = [
+        {"bits": 1, "lookback": 10, "weight": 0.2},
+        {"bits": 2, "lookback": 22, "weight": 0.3},
+        {"bits": 3, "lookback": 60, "weight": 0.3},
+        {"bits": 4, "lookback": 120, "weight": 0.2}
+    ]
+
+    for layer in layers:
+        num_fixed = layer["bits"]
+        lookback = layer["lookback"]
+        weight = layer["weight"]
+        
+        if len(history) < lookback: continue # Bỏ qua nếu ko đủ dữ liệu tầng đó
+
+        # Lấy dữ liệu theo lookback
+        bits_segment = all_history_bits[-lookback:]
+        
+        # Tạo tổ hợp các vị trí bit để cố định
+        combos = list(combinations(range(8), num_fixed))
+        
+        layer_scores = np.zeros(8)
+        layer_match_count = 0
+        
+        for combo in combos:
+            # Trạng thái hiện tại của tổ hợp bit này
+            target_states = [current_bits[idx] for idx in combo]
+            
+            # Tìm trong quá khứ
+            matches = []
+            for k in range(len(bits_segment) - 1):
+                if all(bits_segment[k][idx] == target_states[i] for i, idx in enumerate(combo)):
+                    matches.append(bits_segment[k+1])
+            
+            if matches:
+                ratios = np.mean(matches, axis=0)
+                layer_scores += ratios
+                layer_match_count += 1
+                
+                # Lưu lại những tổ hợp "độc" có xác suất tuyệt đối
+                if (np.max(ratios) >= 0.9 or np.min(ratios) <= 0.1) and num_fixed >= 3:
+                    insights.append({
+                        "Cấp độ": f"{num_fixed}-Bit",
+                        "Tổ hợp": ", ".join([BIT_LABELS[i] for i in combo]),
+                        "Mẫu": len(matches),
+                        "Xác suất": f"{int(np.max(ratios)*100)}%"
+                    })
+        
+        if layer_match_count > 0:
+            final_probs += (layer_scores / layer_match_count) * weight
+            total_weight += weight
+
+    return (final_probs / total_weight).tolist(), insights
+
+def get_v45_rank(history, last_n):
+    probs, insights = infinite_deep_scan(history, last_n)
+    scores = []
     for i in range(100):
-        d, u, t = i//10, i%10, (i//10+i%10)%10
-        e1[i] = db["dau"][d] + db["duoi"][u] + db["tong"][t]
-        e2[i] = (sum(int(x) for x in last_g if x.isdigit()) % 10) + u
-        e3[i] = v_e3[d] + v_e3[u]
-        if dk in db["ref_dau"]: e4[i] += db["ref_dau"][dk]["d"][d]
-        if uk in db["ref_duoi"]: e4[i] += db["ref_duoi"][uk]["u"][u]
-        
-    r1, r2, r3, r4 = stats_rank(e1), stats_rank(e2), stats_rank(e3, True), stats_rank(e4, True)
-
-    # --- PHẦN BỔ SUNG: QUÉT LỊCH SỬ TỰ ĐỘNG ---
-    dead_zone_penalty = 0
-    if len(db["history"]) > 10:
-        h_ranks = [[h['Rank_E1'], h['Rank_E2'], h['Rank_E3'], h['Rank_E4']] for h in db["history"][:50]]
-        # Nếu lịch sử vùng 90+ ít nổ, tăng phạt cho vùng này
-        low_nổ_90 = sum(1 for r in h_ranks if all(x > 90 for x in r))
-        if low_nổ_90 < 2: dead_zone_penalty = 120
-
-    for i in range(100):
-        is_kep = (i // 10 == i % 10)
-        ranks = [r1[i], r2[i], r3[i], r4[i]]
-        
-        # 1. Phạt vùng chết 90+ (Dựa trên quét lịch sử)
-        if all(r > 90 for r in ranks): penalty[i] += dead_zone_penalty
-        
-        # 2. Phạt bẫy Top biên (Nếu r_ai quá thấp mà lịch sử vùng này cũng ít nổ)
-        if all(r <= 5 for r in ranks): penalty[i] += 40
-
-        if use_elite and prev_attrs:
-            curr_at = get_5050_attrs(i)
-            bets = sum(1 for k in prev_attrs if prev_attrs[k] == curr_at[k])
-            if (bets <= 1 or bets == 8) and i != prev_n: penalty[i] += 150
-        if use_ext:
-            for r in ranks:
-                if 1 <= r <= 5 or 95 <= r <= 100: penalty[i] += 30
-        if use_saf and np.mean(ranks) > 85: penalty[i] += 100
-        
-        if not is_kep:
-            if use_bal and (all(r <= 50 for r in ranks) or all(r >= 51 for r in ranks)): penalty[i] += 40
-            if use_con and np.std(ranks) < 15: penalty[i] += 30
-            if use_clu:
-                groups = [(r-1)//10 for r in ranks]
-                if any(groups.count(g) >= 3 for g in range(10)): penalty[i] += 60
-
-    # AI Weight Repair (Min 15%, Max 40%)
-    if use_ai and len(db["history"]) >= 5:
-        perf = []
-        for j in range(4):
-            avg_rk = np.mean([h.get(f"Rank_E{j+1}", 50) for h in db["history"][:20]])
-            perf.append(1 / (avg_rk or 1))
-        raw_w = [p / sum(perf) * 100 for p in perf]
-        w = [max(15, min(40, x)) for x in raw_w]
-        w = [round(x / sum(w) * 100, 1) for x in w]
-    else: w = db.get("weights", [25.0]*4)
-    
-    raw_ai = (r1*w[0] + r2*w[1] + r3*w[2] + r4*w[3]) / 100 + penalty
-    avg_rk = (r1 + r2 + r3 + r4) / 4
-    final_score = np.where(raw_ai > (avg_rk + penalty), avg_rk + penalty, raw_ai)
-    
-    return pd.DataFrame({"SO":[f"{k:02d}" for k in range(100)], "TOTAL":final_score, "R1":r1, "R2":r2, "R3":r3, "R4":r4}), w
+        bits = get_8bit(i)
+        match = sum(bits[j] * probs[j] + (1 - bits[j]) * (1 - probs[j]) for j in range(8))
+        scores.append({"S": f"{i:02d}", "M": match})
+    df = pd.DataFrame(scores).sort_values("M", ascending=False)
+    df['R'] = range(1, 101)
+    return df, probs, insights
 
 # --- 4. GIAO DIỆN ---
-if 'db' not in st.session_state: 
-    st.session_state.db = {
-        "dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[], 
-        "bang_b_points":[{"dau":1} for _ in range(120)], 
-        "ref_dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, 
-        "ref_duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "weights":[25.0]*4
-    }
+if 'history' not in st.session_state: st.session_state.history = []
+if 'last_n' not in st.session_state: st.session_state.last_n = -1
 
-db = st.session_state.db
-st.markdown("<h3 style='text-align: center; color: #1e3a8a;'>🛡️ TUAN PHONG V23.3 AUTO ELITE</h3>", unsafe_allow_html=True)
+st.title("🛡️ 8-BIT INFINITE QUANTUM V4.5")
 
-c_day, c_gdb, c_ky = st.columns([1.2, 1.5, 1])
-with c_day: day_in = st.text_input("Ngày:", value=datetime.now().strftime("%d/%m"))
-with c_gdb: gdb_now = st.text_input("GĐB Vừa Ra:", value=db["last_gdb_full"])
-with c_ky: ky_now = st.number_input("Kỳ:", value=int(db["ky_quay"]), step=1)
+with st.sidebar:
+    st.header("📂 DỮ LIỆU")
+    up = st.file_uploader("Nạp lịch sử lớn (JSON):", type="json")
+    if up:
+        data = json.load(up)
+        st.session_state.history = sorted(data.get("history", []), key=lambda x: int(x["Kỳ"]), reverse=True)
+        st.session_state.last_n = int(st.session_state.history[0]["Số"])
+        st.rerun()
+    st.download_button("💾 Backup", json.dumps({"history": st.session_state.history, "last_n": st.session_state.last_n}), "8bit_v4.5.json")
+    if st.button("🔴 RESET"): st.session_state.history = []; st.rerun()
 
-if st.button("🚀 CẬP NHẬT DỮ LIỆU", type="primary"):
-    if len(gdb_now) >= 5:
-        df_old, _ = calculate_master(st.session_state.ai_auto_w, st.session_state.elite_f, st.session_state.ext_f, st.session_state.bal_f, st.session_state.con_f, st.session_state.clu_f, st.session_state.saf_f)
-        target = f"{int(gdb_now[-2:]):02d}"
-        db["history"].insert(0, {"Ngày": day_in, "Kỳ": int(ky_now), "Số": target, "R_AI": int(stats_rank(df_old["TOTAL"])[df_old[df_old['SO']==target].index[0]]), "Rank_E1": int(df_old.loc[df_old['SO']==target, 'R1'].values[0]), "Rank_E2": int(df_old.loc[df_old['SO']==target, 'R2'].values[0]), "Rank_E3": int(df_old.loc[df_old['SO']==target, 'R3'].values[0]), "Rank_E4": int(df_old.loc[df_old['SO']==target, 'R4'].values[0])})
-        dv, du, tv = int(target)//10, int(target)%10, (int(target)//10+int(target)%10)%10
-        for i in range(10):
-            db["dau"][i] = 0 if i==dv else db["dau"][i]+1
-            db["duoi"][i] = 0 if i==du else db["duoi"][i]+1
-            db["tong"][i] = 0 if i==tv else db["tong"][i]+1
-        db["last_gdb_full"], db["ky_quay"] = gdb_now, ky_now + 1
+# Nhập liệu
+with st.expander("📝 NHẬP KẾT QUẢ KỲ MỚI", expanded=True):
+    c1, c2, c3 = st.columns(3)
+    n_in = c1.text_input("GĐB:")
+    k_in = c2.number_input("Kỳ:", value=len(st.session_state.history)+1)
+    d_in = c3.text_input("Ngày:", datetime.now().strftime("%d/%m"))
+    if st.button("🚀 CHẠY PHỄU LỌC VÔ CỰC"):
+        val = int(n_in[-2:])
+        df_r, _, _ = get_v45_rank(st.session_state.history, st.session_state.last_n)
+        r_val = df_r[df_r['S'] == f"{val:02d}"]['R'].values[0] if not df_r.empty else 0
+        st.session_state.history.insert(0, {"Ngày": d_in, "Kỳ": int(k_in), "Số": f"{val:02d}", "Rank": r_val})
+        st.session_state.last_n = val
         st.rerun()
 
-st.divider()
-tab_dan, tab_log, tab_5050, tab_setup = st.tabs(["🎯 DÀN", "📊 NHẬT KÝ", "🔍 50/50", "⚙️ HỆ THỐNG"])
-
-with tab_dan:
-    c1, c2, c3, c4 = st.columns(4); c5, c6, c7 = st.columns(3)
-    with c1: st.toggle("🤖 AI", key="ai_auto_w", value=True)
-    with c2: st.toggle("💎 Elite", key="elite_f", value=True)
-    with c3: st.toggle("⚠️ Extreme", key="ext_f", value=True)
-    with c4: st.toggle("🛡️ Safety", key="saf_f", value=True)
-    with c5: st.toggle("⚖️ Bal", key="bal_f", value=True)
-    with c6: st.toggle("📉 Con", key="con_f", value=True)
-    with c7: st.toggle("🔍 Clu", key="clu_f", value=True)
+if st.session_state.history:
+    df_rank, probs, insights = get_v45_rank(st.session_state.history, st.session_state.last_n)
+    t1, t2, t3 = st.tabs(["🎯 DÀN TINH ANH V4.5", "🔍 DEEP SCAN INSIGHTS", "📊 NHẬT KÝ"])
     
-    df_res, w_active = calculate_master(st.session_state.ai_auto_w, st.session_state.elite_f, st.session_state.ext_f, st.session_state.bal_f, st.session_state.con_f, st.session_state.clu_f, st.session_state.saf_f)
-    c_n1, c_n2 = st.columns(2)
-    st.session_state.num1 = c_n1.number_input("Dàn 50:", 1, 90, st.session_state.get('num1', 50))
-    st.session_state.num2 = c_n2.number_input("Dàn 79:", 1, 99, st.session_state.get('num2', 79))
-    ds = df_res.sort_values("TOTAL")["SO"].tolist()
-    st.markdown(f"<div class='dan-box dan-1'>{', '.join(ds[:st.session_state.num1])}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='dan-box dan-2'>{', '.join(ds[:st.session_state.num2])}</div>", unsafe_allow_html=True)
-    if db["history"]:
-        h = db["history"]
-        w50 = sum(1 for x in h if x.get("R_AI", 100) <= 50); w79 = sum(1 for x in h if x.get("R_AI", 100) <= 79)
-        cm1, cm2 = st.columns(2)
-        cm1.metric("Ăn Dàn 50", f"{w50}/{len(h)}", f"{round(w50/len(h)*100,1)}%"); cm2.metric("Ăn Dàn 79", f"{w79}/{len(h)}", f"{round(w79/len(h)*100,1)}%")
+    with t1:
+        st.write(f"🔢 Số gốc: **{st.session_state.last_n:02d}** | Dữ liệu: **{len(st.session_state.history)} kỳ**")
+        ca, cb = st.columns(2)
+        ca.markdown(f"**Dàn A (50 số):** <div class='dan-box'>{' '.join(df_rank.head(50)['S'].tolist())}</div>", unsafe_allow_html=True)
+        cb.markdown(f"**Dàn B (36 số):** <div class='dan-box'>{' '.join(df_rank.head(36)['S'].tolist())}</div>", unsafe_allow_html=True)
+        
+        st.divider()
+        st.write("📊 **Xác suất hội tụ đa tầng:**")
+        cols = st.columns(8)
+        for i, (label, p) in enumerate(zip(BIT_LABELS, probs)):
+            cols[i].metric(label, f"{int(p*100)}%")
 
-with tab_log:
-    if db["history"]: st.table(pd.DataFrame(db["history"]).head(20)[["Ngày", "Kỳ", "Số", "R_AI", "Rank_E1", "Rank_E2", "Rank_E3", "Rank_E4"]])
+    with t2:
+        st.header("⚡ CẢNH BÁO TỔ HỢP SÂU (3-BIT & 4-BIT)")
+        if insights:
+            for item in insights:
+                st.markdown(f"<div class='deep-scan-card'>🔥 {item['Cấp độ']} nòng cốt: Tổ hợp [{item['Tổ hợp']}] có mẫu {item['Mẫu']} kỳ - Xác suất nổ: {item['Xác suất']}</div>", unsafe_allow_html=True)
+        else:
+            st.warning("Dữ liệu chưa đủ lớn để kích hoạt Deep Scan (Cần > 60 kỳ cho 3-Bit, > 120 kỳ cho 4-Bit).")
 
-with tab_5050:
-    if db["history"]:
-        df_50 = pd.DataFrame([get_5050_attrs(int(x["Số"])) for x in db["history"][:15]])
-        df_50.index = [x["Kỳ"] for x in db["history"][:15]]
-        st.table(df_50)
-
-with tab_setup:
-    st.write(f"📊 AI Weights: E1:{w_active[0]}% | E2:{w_active[1]}% | E3:{w_active[2]}% | E4:{w_active[3]}%")
-    if st.button("🔴 RESET ALL"): st.session_state.db = {"dau":[0]*10, "duoi":[0]*10, "tong":[0]*10, "last_gdb_full":"00000", "ky_quay":1, "history":[], "bang_b_points":[{"dau":1} for _ in range(120)], "ref_dau":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "ref_duoi":{str(i):{"d":[0]*10,"u":[0]*10} for i in range(10)}, "weights":[25.0]*4}; st.rerun()
-    st.download_button("💾 Lưu File .JSON", json.dumps(st.session_state.db), "data.json", use_container_width=True)
-    up = st.file_uploader("Nạp File", type="json")
-    if up: st.session_state.db = json.load(up); st.rerun()
+    with t3:
+        st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
